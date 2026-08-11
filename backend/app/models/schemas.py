@@ -1,0 +1,68 @@
+"""
+Pydantic 数据模型定义
+定义 API 请求和响应的数据结构
+"""
+
+from pydantic import BaseModel, Field
+from typing import Optional
+
+
+# ==================== 聊天相关模型 ====================
+
+class ChatRequest(BaseModel):
+    """聊天请求模型"""
+    question: str = Field(..., description="用户提出的问题", min_length=1, max_length=2000)
+
+
+class ChatResponse(BaseModel):
+    """聊天响应模型"""
+    answer: str = Field(..., description="AI 生成的回答")
+
+
+# ==================== 知识库管理模型 ====================
+
+class KnowledgeDocument(BaseModel):
+    """知识库文档信息模型"""
+    id: str = Field(..., description="文档唯一标识（ChromaDB 中的文档 ID 前缀）")
+    filename: str = Field(..., description="文档名称")
+    folder: str = Field(default="", description="所属文件夹/分类")
+    upload_time: str = Field(..., description="上传时间")
+    chunk_count: int = Field(..., description="文档切分后的 Chunk 数量")
+
+
+class KnowledgeListResponse(BaseModel):
+    """知识库文档列表响应模型"""
+    documents: list[KnowledgeDocument] = Field(default_factory=list, description="文档列表")
+    total: int = Field(..., description="文档总数")
+
+
+class DeleteDocumentRequest(BaseModel):
+    """删除文档请求模型"""
+    doc_id: str = Field(..., description="要删除的文档 ID")
+
+
+class DeleteDocumentResponse(BaseModel):
+    """删除文档响应模型"""
+    success: bool = Field(..., description="是否删除成功")
+    message: str = Field(..., description="操作结果消息")
+
+
+class BatchUploadFileResult(BaseModel):
+    """批量上传中单个文件的结果"""
+    success: bool = Field(..., description="该文件是否上传成功")
+    filename: str = Field(..., description="文件名")
+    chunk_count: int = Field(default=0, description="切分后的 Chunk 数量")
+    message: str = Field(default="", description="处理结果消息")
+
+
+class BatchUploadResponse(BaseModel):
+    """批量上传响应模型"""
+    files: list[BatchUploadFileResult] = Field(default_factory=list, description="每个文件的上传结果")
+    total_chunks: int = Field(default=0, description="本次上传的总 Chunk 数")
+    message: str = Field(default="", description="整体操作结果消息")
+
+
+class FolderInfo(BaseModel):
+    """文件夹/分类信息模型"""
+    name: str = Field(..., description="文件夹名称")
+    document_count: int = Field(..., description="该文件夹下的文档数量")

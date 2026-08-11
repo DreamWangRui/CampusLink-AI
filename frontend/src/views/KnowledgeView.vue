@@ -1,0 +1,498 @@
+<!--
+  知识库管理页面
+  功能：
+  - 批量文件上传（支持多选 PDF/DOCX/TXT/MD）
+  - 文件夹/分类选择（可选择已有文件夹或输入新名称）
+  - 按文件夹筛选文档列表
+  - 文档删除
+-->
+<template>
+  <div class="knowledge-container">
+    <!-- 页面头部 -->
+    <div class="knowledge-header">
+      <h2>知识库管理</h2>
+      <p>管理校园知识库中的文档，支持 PDF、DOCX、TXT、Markdown 格式，支持批量上传和文件夹分类</p>
+    </div>
+
+    <!-- 上传区域 -->
+    <div class="upload-section">
+      <el-upload
+        ref="uploadRef"
+        class="upload-area"
+        :auto-upload="false"
+        :show-file-list="false"
+        :accept="'.pdf,.docx,.txt,.md'"
+        :multiple="true"
+        :on-change="handleFileChange"
+      >
+        <div class="upload-trigger">
+          <el-icon class="upload-icon"><UploadFilled /></el-icon>
+          <div class="upload-text">
+            <span class="upload-primary">点击选择文件（支持多选）</span>
+            <span class="upload-secondary">或将文件拖拽到此处</span>
+          </div>
+          <span class="upload-hint">支持 PDF / DOCX / TXT / MD，可一次选择多个文件</span>
+        </div>
+      </el-upload>
+
+      <!-- 上传进度提示 -->
+      <div v-if="knowledgeStore.uploading" class="upload-progress">
+        <el-progress :percentage="100" :indeterminate="true" :duration="3" />
+        <span>正在解析文档并导入知识库...</span>
+      </div>
+
+      <!-- 已选择的文件列表 + 文件夹选择 -->
+      <div v-if="selectedFiles.length > 0" class="selected-files-panel">
+        <!-- 文件夹/分类选择 -->
+        <div class="folder-select-row">
+          <span class="folder-label">分类：</span>
+          <el-select
+            v-model="uploadFolder"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入文件夹名称"
+            style="width: 280px"
+            :disabled="knowledgeStore.uploading"
+          >
+            <el-option
+              v-for="f in knowledgeStore.folders"
+              :key="f.name"
+              :label="`${f.name} (${f.document_count} 个文档)`"
+              :value="f.name"
+            />
+          </el-select>
+          <span class="folder-hint">留空则归入"未分类"</span>
+        </div>
+
+        <!-- 文件列表 -->
+        <div class="file-list">
+          <div v-for="(f, i) in selectedFiles" :key="i" class="file-item">
+            <el-icon class="file-icon"><Document /></el-icon>
+            <span class="file-name">{{ f.name }}</span>
+            <span class="file-size">{{ formatFileSize(f.size) }}</span>
+            <el-button
+              type="danger" link size="small"
+              :disabled="knowledgeStore.uploading"
+              @click="removeFile(i)"
+            >
+              <el-icon><Close /></el-icon>
+            </el-button>
+          </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="upload-actions">
+          <span class="file-count">已选 {{ selectedFiles.length }} 个文件</span>
+          <el-button
+            type="primary"
+            :loading="knowledgeStore.uploading"
+            @click="handleUpload"
+          >
+            确认上传（{{ selectedFiles.length }} 个文件）
+          </el-button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 文档列表区域 -->
+    <div class="document-section">
+      <div class="section-header">
+        <h3>已导入文档（{{ knowledgeStore.total }}）</h3>
+        <el-button :icon="'Refresh'" size="small" @click="refreshAll">
+          刷新
+        </el-button>
+      </div>
+
+      <!-- 文件夹筛选栏 -->
+      <div v-if="knowledgeStore.folders.length > 0" class="folder-filter">
+        <span class="filter-label">按分类筛选：</span>
+        <el-radio-group
+          v-model="knowledgeStore.selectedFolder"
+          size="small"
+          @change="handleFolderChange"
+        >
+          <el-radio-button value="">全部</el-radio-button>
+          <el-radio-button
+            v-for="f in knowledgeStore.folders"
+            :key="f.name"
+            :value="f.name"
+          >
+            {{ f.name }} ({{ f.document_count }})
+          </el-radio-button>
+        </el-radio-group>
+      </div>
+
+      <!-- 加载中 -->
+      <div v-if="knowledgeStore.loading" class="loading-state">
+        <el-skeleton :rows="3" animated />
+      </div>
+
+      <!-- 空状态 -->
+      <el-empty
+        v-else-if="knowledgeStore.documents.length === 0"
+        :description="knowledgeStore.selectedFolder ? `'${knowledgeStore.selectedFolder}' 下暂无文档` : '暂无文档，请上传校园相关知识文件'"
+        :image-size="120"
+      />
+
+      <!-- 文档表格 -->
+      <el-table
+        v-else
+        :data="knowledgeStore.documents"
+        stripe
+        style="width: 100%"
+        :header-cell-style="{ background: '#f5f7fa', color: '#303133' }"
+      >
+        <el-table-column prop="filename" label="文档名称" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="folder" label="文件夹" width="140" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.folder" size="small" type="warning">{{ row.folder }}</el-tag>
+            <span v-else style="color: #c0c4cc; font-size: 12px;">未分类</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="upload_time" label="上传时间" width="180" />
+        <el-table-column prop="chunk_count" label="Chunk 数量" width="120" align="center">
+          <template #default="{ row }">
+            <el-tag size="small" type="info">{{ row.chunk_count }} 个</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" align="center">
+          <template #default="{ row }">
+            <el-popconfirm
+              title="确定要删除该文档吗？"
+              confirm-button-text="确认删除"
+              cancel-button-text="取消"
+              @confirm="handleDelete(row.id)"
+            >
+              <template #reference>
+                <el-button type="danger" size="small" :icon="'Delete'" link>
+                  删除
+                </el-button>
+              </template>
+            </el-popconfirm>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
+import { useKnowledgeStore } from '../store/knowledge'
+import type { UploadFile } from 'element-plus'
+
+// ==================== 知识库状态管理 ====================
+const knowledgeStore = useKnowledgeStore()
+
+// ==================== 文件选择状态 ====================
+const selectedFiles = ref<File[]>([])
+
+// ==================== 文件夹选择 ====================
+const uploadFolder = ref('')
+
+/**
+ * 处理文件选择变化（支持多选）
+ * Element Plus 在 multiple 模式下，每选择一个文件触发一次 change
+ */
+function handleFileChange(file: UploadFile) {
+  if (!file.raw) return
+  // 避免重复添加（按名称 + 大小去重）
+  const exists = selectedFiles.value.some(
+    f => f.name === file.name && f.size === file.size
+  )
+  if (!exists) {
+    selectedFiles.value.push(file.raw)
+  }
+}
+
+/**
+ * 从已选列表中移除单个文件
+ */
+function removeFile(index: number) {
+  selectedFiles.value.splice(index, 1)
+}
+
+/**
+ * 格式化文件大小为可读字符串
+ */
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/**
+ * 处理批量上传
+ */
+async function handleUpload() {
+  if (selectedFiles.value.length === 0) {
+    ElMessage.warning('请先选择文件')
+    return
+  }
+
+  try {
+    const message = await knowledgeStore.upload(selectedFiles.value, uploadFolder.value)
+    ElMessage.success(message)
+    // 上传成功后清空
+    selectedFiles.value = []
+  } catch (error: any) {
+    ElMessage.error(typeof error === 'string' ? error : error.message || '上传失败')
+  }
+}
+
+/**
+ * 处理文件夹筛选切换
+ */
+function handleFolderChange(_value: string) {
+  knowledgeStore.loadDocuments()
+}
+
+/**
+ * 处理文档删除
+ */
+async function handleDelete(docId: string) {
+  try {
+    const message = await knowledgeStore.removeDocument(docId)
+    ElMessage.success(message)
+  } catch (error: any) {
+    ElMessage.error(typeof error === 'string' ? error : error.message || '删除失败')
+  }
+}
+
+/**
+ * 刷新全部数据
+ */
+function refreshAll() {
+  knowledgeStore.loadDocuments()
+  knowledgeStore.loadFolders()
+}
+
+// ==================== 页面加载 ====================
+onMounted(() => {
+  knowledgeStore.loadDocuments()
+  knowledgeStore.loadFolders()
+})
+</script>
+
+<style scoped>
+/* ==================== 整体布局 ==================== */
+.knowledge-container {
+  padding: 24px;
+  height: 100%;
+  overflow-y: auto;
+  background: #f5f7fa;
+}
+
+/* ==================== 页面头部 ==================== */
+.knowledge-header {
+  margin-bottom: 24px;
+}
+
+.knowledge-header h2 {
+  font-size: 20px;
+  color: #303133;
+  margin-bottom: 8px;
+}
+
+.knowledge-header p {
+  font-size: 13px;
+  color: #909399;
+}
+
+/* ==================== 上传区域 ==================== */
+.upload-section {
+  margin-bottom: 24px;
+}
+
+.upload-area {
+  width: 100%;
+}
+
+.upload-trigger {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  border: 2px dashed #dcdfe6;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.upload-trigger:hover {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+
+.upload-icon {
+  font-size: 36px;
+  color: #c0c4cc;
+  margin-bottom: 12px;
+}
+
+.upload-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.upload-primary {
+  font-size: 15px;
+  color: #409eff;
+  font-weight: 500;
+}
+
+.upload-secondary {
+  font-size: 13px;
+  color: #c0c4cc;
+}
+
+.upload-hint {
+  font-size: 12px;
+  color: #c0c4cc;
+}
+
+/* ==================== 上传进度 ==================== */
+.upload-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #606266;
+}
+
+/* ==================== 已选文件面板 ==================== */
+.selected-files-panel {
+  margin-top: 12px;
+  padding: 16px;
+  background: #fff;
+  border-radius: 8px;
+}
+
+/* 文件夹选择行 */
+.folder-select-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.folder-label {
+  font-size: 14px;
+  color: #303133;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.folder-hint {
+  font-size: 12px;
+  color: #c0c4cc;
+}
+
+/* 文件列表 */
+.file-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.file-item:hover {
+  background: #f5f7fa;
+}
+
+.file-icon {
+  color: #409eff;
+  font-size: 16px;
+}
+
+.file-name {
+  flex: 1;
+  font-size: 13px;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-size {
+  font-size: 12px;
+  color: #909399;
+  white-space: nowrap;
+}
+
+/* 上传操作按钮 */
+.upload-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 14px;
+  border-top: 1px solid #ebeef5;
+}
+
+.file-count {
+  font-size: 13px;
+  color: #606266;
+}
+
+/* ==================== 文档列表区域 ==================== */
+.document-section {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.section-header h3 {
+  font-size: 16px;
+  color: #303133;
+  font-weight: 600;
+}
+
+/* ==================== 文件夹筛选 ==================== */
+.folder-filter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  font-size: 13px;
+  color: #606266;
+  white-space: nowrap;
+}
+
+.loading-state {
+  padding: 20px;
+}
+</style>

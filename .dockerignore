@@ -1,0 +1,22 @@
+# ==================== Python 相关 ====================
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+
+# ==================== Node.js 相关 ====================
+frontend/node_modules/
+frontend/dist/
+
+# ==================== 开发文件 ====================
+.git/
+.gitignore
+*.md
+start.sh
+start.bat
+.vscode/
+.idea/
+
+# ==================== 数据目录（运行时挂载） ====================
+uploads/
+chroma_db/

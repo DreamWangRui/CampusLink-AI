@@ -1,0 +1,16 @@
+请严格按照生产级项目标准开发。
+
+要求：
+
+1. 前后端分离
+2. 使用 uv 管理 Python 项目
+3. 使用 pnpm 管理 Vue 项目
+4. 所有接口使用 RESTful 风格
+5. 使用 OpenAI SDK 调用 DeepSeek
+6. 使用 ChromaDB PersistentClient 持久化存储
+7. 所有代码添加中文注释
+8. 自动生成 README.md
+9. 自动生成启动脚本
+10. 自动生成 Docker 部署文件
+
+优先保证 MVP 可运行，再考虑代码优化。

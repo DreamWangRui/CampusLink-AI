@@ -1,0 +1,576 @@
+# CampusLink AI - 校园智能助手
+
+## 项目简介
+
+CampusLink AI 是一个基于 RAG（Retrieval-Augmented Generation，检索增强生成）的校园智能问答系统。
+
+系统用于解决新生入学期间大量重复咨询问题，例如：
+
+* 宿舍相关问题
+* 食堂相关问题
+* 校园卡办理
+* 图书馆使用
+* 驾校报名
+* 奖学金申请
+* 校医院服务
+* 社团活动
+* 校历安排
+
+用户通过自然语言提问：
+
+```text
+校园卡丢了怎么办？
+
+第三食堂营业到几点？
+
+驾校在哪里报名？
+```
+
+系统自动从校园知识库中检索相关内容，并结合大模型生成准确回答。
+
+---
+
+# 一、项目目标
+
+## MVP目标
+
+实现：
+
+* 文档上传
+* 文档解析
+* 文本切分
+* 向量化
+* ChromaDB存储
+* 语义检索
+* DeepSeek生成回答
+* Web聊天界面
+
+不实现：
+
+* Agent
+* MCP
+* Tool Calling
+* 多Agent
+* 用户系统
+* 权限管理
+
+---
+
+# 二、技术栈
+
+## 前端
+
+Vue 3
+
+TypeScript
+
+Vite
+
+Element Plus
+
+Pinia
+
+Axios
+
+Markdown-it
+
+---
+
+## 后端
+
+FastAPI
+
+Python 3.11+
+
+Uvicorn
+
+Pydantic
+
+---
+
+## AI能力
+
+DeepSeek API
+
+模型：
+
+deepseek-chat
+
+---
+
+## 向量数据库
+
+ChromaDB
+
+本地持久化
+
+无需部署Milvus
+
+---
+
+## Embedding模型
+
+BAAI/bge-small-zh-v1.5
+
+特点：
+
+* 中文效果优秀
+* 免费
+* 本地运行
+* 占用资源低
+
+向量维度：
+
+512
+
+---
+
+# 三、系统架构
+
+```text
+┌────────────────────┐
+│       Vue3         │
+│    Chat UI         │
+└─────────┬──────────┘
+          │ HTTP
+          ▼
+┌────────────────────┐
+│      FastAPI       │
+│                    │
+│ Upload API         │
+│ Chat API           │
+│ Knowledge API      │
+└─────────┬──────────┘
+          │
+          ▼
+┌────────────────────┐
+│   RAG Service      │
+│                    │
+│ Embedding          │
+│ Retrieval          │
+│ Prompt Builder     │
+│ LLM Generator      │
+└─────────┬──────────┘
+          │
+          ▼
+┌────────────────────┐
+│     ChromaDB       │
+└─────────┬──────────┘
+          │
+          ▼
+┌────────────────────┐
+│ Knowledge Files    │
+│ PDF DOCX TXT MD    │
+└────────────────────┘
+```
+
+---
+
+# 四、核心业务流程
+
+## 文档导入流程
+
+```text
+上传PDF
+
+↓
+
+解析文本
+
+↓
+
+文本切分
+
+↓
+
+Embedding
+
+↓
+
+ChromaDB
+
+↓
+
+完成导入
+```
+
+---
+
+## 问答流程
+
+```text
+用户提问
+
+↓
+
+Embedding
+
+↓
+
+向量检索
+
+↓
+
+Top5相关片段
+
+↓
+
+构造Prompt
+
+↓
+
+DeepSeek
+
+↓
+
+返回答案
+```
+
+---
+
+# 五、项目目录结构
+
+```text
+CampusLinkAI/
+
+├── frontend/
+│
+│   ├── src/
+│   │
+│   ├── views/
+│   │   ├── ChatView.vue
+│   │   ├── KnowledgeView.vue
+│   │
+│   ├── api/
+│   │
+│   ├── store/
+│   │
+│   └── components/
+│
+├── backend/
+│
+│   ├── app/
+│   │
+│   ├── api/
+│   │
+│   ├── services/
+│   │   ├── embedding_service.py
+│   │   ├── retrieval_service.py
+│   │   ├── llm_service.py
+│   │   └── rag_service.py
+│   │
+│   ├── database/
+│   │
+│   ├── models/
+│   │
+│   ├── utils/
+│   │
+│   └── main.py
+│
+├── uploads/
+│
+├── chroma_db/
+│
+└── README.md
+```
+
+---
+
+# 六、功能模块设计
+
+## 1. 聊天模块
+
+接口：
+
+POST /api/chat
+
+请求：
+
+```json
+{
+  "question": "校园卡丢了怎么办？"
+}
+```
+
+返回：
+
+```json
+{
+  "answer": "根据校园卡管理规定..."
+}
+```
+
+---
+
+## 2. 文档上传模块
+
+接口：
+
+POST /api/document/upload
+
+支持：
+
+* PDF
+* DOCX
+* TXT
+* Markdown
+
+上传后自动：
+
+* 解析
+* 切分
+* 向量化
+* 入库
+
+---
+
+## 3. 知识库管理模块
+
+接口：
+
+GET /api/knowledge/list
+
+查看：
+
+* 文档名称
+* 上传时间
+* Chunk数量
+
+支持：
+
+删除文档
+
+---
+
+# 七、文本切分策略
+
+Chunk Size：
+
+```text
+500
+```
+
+Chunk Overlap：
+
+```text
+100
+```
+
+示例：
+
+```text
+Chunk1
+
+校园卡办理地点位于信息中心...
+
+Chunk2
+
+信息中心工作时间为...
+```
+
+---
+
+# 八、Prompt设计
+
+系统Prompt：
+
+```text
+你是学校官方校园助手。
+
+你的职责：
+
+回答学生关于：
+
+- 宿舍
+- 食堂
+- 校园卡
+- 图书馆
+- 驾校
+- 奖学金
+- 校医院
+
+相关问题。
+
+回答必须依据知识库内容。
+
+如果知识库中没有相关内容：
+
+请直接回答：
+
+"目前知识库暂无相关信息，请咨询学校相关部门。"
+
+不要编造答案。
+```
+
+用户Prompt：
+
+```text
+知识库内容：
+
+{context}
+
+用户问题：
+
+{question}
+```
+
+---
+
+# 九、RAG实现要求
+
+检索方式：
+
+```text
+Top K = 5
+```
+
+相似度：
+
+```text
+Cosine Similarity
+```
+
+Embedding：
+
+```python
+BAAI/bge-small-zh-v1.5
+```
+
+检索返回：
+
+```python
+top_5_chunks
+```
+
+拼接后送入DeepSeek。
+
+---
+
+# 十、前端页面设计
+
+## 首页（聊天）
+
+布局：
+
+```text
++--------------------------------+
+| CampusLink AI                  |
++--------------------------------+
+
+对话窗口
+
+用户消息
+
+AI消息
+
+----------------------------------
+
+输入框
+
+发送按钮
+```
+
+---
+
+## 知识库页面
+
+功能：
+
+上传文件
+
+查看文档
+
+删除文档
+
+查看Chunk数量
+
+---
+
+# 十一、环境变量
+
+.env
+
+```env
+DEEPSEEK_API_KEY=your_api_key
+
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+
+MODEL_NAME=deepseek-chat
+```
+
+---
+
+# 十二、后续升级路线
+
+V1（当前）
+
+✓ RAG
+
+✓ 文档上传
+
+✓ DeepSeek问答
+
+---
+
+V2
+
+增加：
+
+* 对话历史
+* 会话管理
+* 多知识库
+
+---
+
+V3
+
+升级Agent
+
+增加：
+
+* 校历查询
+* 食堂营业时间查询
+* 办事流程生成
+* 校园地图查询
+
+---
+
+V4
+
+MCP + Tool Calling
+
+实现真正校园智能助手
+
+---
+
+# 项目验收标准
+
+必须实现：
+
+* Vue3聊天页面
+* FastAPI后端
+* PDF上传
+* ChromaDB存储
+* Embedding向量化
+* DeepSeek问答
+* RAG检索
+
+测试问题：
+
+```text
+校园卡丢了怎么办？
+
+第三食堂营业到几点？
+
+图书馆周末开放吗？
+
+驾校在哪里报名？
+```
+
+系统能够基于知识库内容准确回答。
+
+项目完成后即可作为：
+
+校园智能助手（CampusLink AI）
+
+放入个人简历与作品集。
