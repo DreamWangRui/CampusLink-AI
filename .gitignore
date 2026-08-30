@@ -16,6 +16,7 @@ dist/
 uploads/
 chroma_db/
 backups/
+data/
 
 # ==================== IDE / 编辑器 ====================
 .vscode/
