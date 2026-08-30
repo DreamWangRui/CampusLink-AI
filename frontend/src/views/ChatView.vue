@@ -86,16 +86,16 @@
             v-html="renderMarkdown(msg.content)"
           ></div>
           <div v-else class="message-text">{{ msg.content }}</div>
-          <!-- 回答参考的知识库来源 -->
+          <!-- 回答参考的知识库来源（按文档聚合） -->
           <div v-if="msg.sources?.length" class="message-sources">
             <el-tag
-              v-for="(s, i) in msg.sources"
-              :key="i"
+              v-for="s in msg.sources"
+              :key="s.filename"
               size="small"
               type="info"
               class="source-tag"
             >
-              📎 {{ s.filename }}
+              📎 {{ s.filename }}{{ s.chunks > 1 ? `（${s.chunks} 个片段）` : '' }}
             </el-tag>
           </div>
           <div class="message-time">{{ msg.time }}</div>

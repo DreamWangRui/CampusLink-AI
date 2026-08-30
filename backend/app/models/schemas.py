@@ -30,10 +30,10 @@ class ChatRequest(BaseModel):
 
 
 class SourceRef(BaseModel):
-    """回答引用的知识库片段来源"""
+    """回答引用的知识库来源（按文档聚合）"""
     filename: str = Field(..., description="来源文档名称")
-    chunk_index: int | None = Field(None, description="片段序号")
-    distance: float = Field(..., description="与问题的余弦距离（越小越相关）")
+    chunks: int = Field(..., description="该文档贡献的片段数")
+    best_distance: float = Field(..., description="其中最相关片段的余弦距离（越小越相关）")
 
 
 class ChatResponse(BaseModel):

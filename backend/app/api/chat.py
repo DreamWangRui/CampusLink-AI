@@ -23,15 +23,22 @@ router = APIRouter(prefix="/api", tags=["聊天"])
 
 
 def _to_sources(relevant_docs: list[dict]) -> list[SourceRef]:
-    """将检索结果转换为来源引用列表"""
-    return [
-        SourceRef(
-            filename=doc["metadata"].get("filename", "未知文档"),
-            chunk_index=doc["metadata"].get("chunk_index"),
-            distance=round(doc["distance"], 3),
-        )
-        for doc in relevant_docs
-    ]
+    """
+    将检索结果按文档聚合为来源引用（同一文档的多个片段合并为一条，
+    展示片段数与最相关距离，避免同名标签刷屏）
+    """
+    grouped: dict[str, dict] = {}
+    for doc in relevant_docs:
+        filename = doc["metadata"].get("filename", "未知文档")
+        distance = round(doc["distance"], 3)
+        if filename in grouped:
+            grouped[filename]["chunks"] += 1
+            grouped[filename]["best_distance"] = min(grouped[filename]["best_distance"], distance)
+        else:
+            grouped[filename] = {"filename": filename, "chunks": 1, "best_distance": distance}
+    # 按最相关距离升序
+    ordered = sorted(grouped.values(), key=lambda x: x["best_distance"])
+    return [SourceRef(**item) for item in ordered]
 
 
 @router.post("/chat", response_model=ChatResponse, summary="发送问题进行问答（非流式）")

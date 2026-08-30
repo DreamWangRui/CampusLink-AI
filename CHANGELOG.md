@@ -4,6 +4,29 @@
 
 ---
 
+## [2026-08-30] 变更二十五：来源标签按文档聚合 + 修复 index.html 缓存问题
+
+> 用户反馈：回答的来源标签里同一个文件重复出现 7 次，太冗余。排查中还发现并修复了一个部署级缓存问题。
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `app/models/schemas.py` + `app/api/chat.py` | `SourceRef` 结构升级为按文档聚合：`{filename, chunks, best_distance}`（同一文档的多个片段合并为一条，展示贡献片段数与最相关距离，按相关度排序）；流式/非流式共用 |
+| `frontend/src/types/index.ts` + `views/ChatView.vue` | 来源标签渲染：单片段显示 `📎 文件名`，多片段显示 `📎 文件名（N 个片段）` |
+| `docker/nginx.conf` | **修复部署级缓存问题**：`index.html` 增加 `Cache-Control: no-cache`——原先 nginx 对 HTML 未禁缓存，发版后浏览器继续用旧 JS 包（实测：页面加载 `index-BoD-gDbH.js` 而当前版本是 `index-CwU4327D.js`），用户需手动强刷才能看到新界面 |
+
+### 核验检查（pytest + API + 浏览器实测）
+
+| 测试项 | 结果 |
+|--------|------|
+| pytest：同文档多片段聚合（a.pdf×2 + b.pdf×1，按最相关排序） | ✅ 57 passed |
+| API：奖学金问答 sources | ✅ `[{"filename": "评奖评优新文件.pdf", "chunks": 7, "best_distance": 0.526}]` |
+| 浏览器：回答下方单一聚合标签（7 个片段） | ✅ 截图确认 |
+| index.html 响应头 | ✅ `Cache-Control: no-cache`（nginx 已重建） |
+
+---
+
 ## [2026-08-30] 变更二十四：多会话支持（可开多个独立对话）
 
 > 用户需求："需要可以开启多个会话，现在只有一个"。聊天页新增会话面板：新建 / 切换 / 删除多个独立对话。

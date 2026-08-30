@@ -10,11 +10,11 @@ export interface ChatRequest {
   question: string
 }
 
-/** 回答引用的知识库片段来源 */
+/** 回答引用的知识库来源（按文档聚合） */
 export interface SourceRef {
   filename: string
-  chunk_index?: number | null
-  distance: number
+  chunks: number
+  best_distance: number
 }
 
 /** 对话历史条目（多轮对话） */
