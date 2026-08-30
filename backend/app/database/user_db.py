@@ -101,6 +101,25 @@ def verify_user(username: str, password: str) -> bool:
     return secrets.compare_digest(computed, stored_hash)
 
 
+def update_password(username: str, password: str) -> None:
+    """
+    更新用户密码（新盐新哈希）
+
+    Raises:
+        ValueError: 用户不存在
+    """
+    salt = secrets.token_bytes(16)
+    password_hash = f"{salt.hex()}${_hash_password(password, salt)}"
+    with _lock:
+        cur = _get_conn().execute(
+            "UPDATE users SET password_hash = ? WHERE username = ?",
+            (password_hash, username),
+        )
+        _get_conn().commit()
+    if cur.rowcount == 0:
+        raise ValueError(f"用户「{username}」不存在")
+
+
 # ==================== 聊天记录 ====================
 
 def append_chat_message(identity: str, role: str, content: str, sources_json: str = "[]") -> None:

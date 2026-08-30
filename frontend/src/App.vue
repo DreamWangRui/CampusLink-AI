@@ -24,6 +24,14 @@
               👤 {{ authStore.username }}
               <el-tag v-if="authStore.isAdmin" size="small" type="warning" class="role-tag">管理员</el-tag>
             </span>
+            <el-button
+              v-if="!authStore.isAdmin"
+              text
+              class="header-btn"
+              @click="openPasswordDialog"
+            >
+              修改密码
+            </el-button>
             <el-button text class="header-btn" @click="handleLogout">退出</el-button>
           </template>
           <!-- 未登录：登录/注册入口 -->
@@ -90,6 +98,43 @@
         <el-button @click="authDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="submitting" @click="submitAuth">
           {{ authMode === 'login' ? '登录' : '注册并登录' }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 修改密码弹窗 -->
+    <el-dialog
+      v-model="passwordDialogVisible"
+      title="修改密码"
+      width="380px"
+      :close-on-click-modal="false"
+    >
+      <el-input
+        v-model="passwordForm.oldPassword"
+        type="password"
+        placeholder="原密码"
+        show-password
+        class="auth-field"
+      />
+      <el-input
+        v-model="passwordForm.newPassword"
+        type="password"
+        placeholder="新密码（至少 6 位）"
+        show-password
+        class="auth-field"
+      />
+      <el-input
+        v-model="passwordForm.confirmPassword"
+        type="password"
+        placeholder="确认新密码"
+        show-password
+        class="auth-field"
+        @keyup.enter="submitPasswordChange"
+      />
+      <template #footer>
+        <el-button @click="passwordDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="changingPassword" @click="submitPasswordChange">
+          确认修改
         </el-button>
       </template>
     </el-dialog>
@@ -165,6 +210,42 @@ async function submitAuth() {
 async function handleLogout() {
   authStore.logout()
   ElMessage.success('已退出登录')
+}
+
+// ==================== 修改密码（普通用户） ====================
+const passwordDialogVisible = ref(false)
+const passwordForm = ref({ oldPassword: '', newPassword: '', confirmPassword: '' })
+const changingPassword = ref(false)
+
+function openPasswordDialog() {
+  passwordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
+  passwordDialogVisible.value = true
+}
+
+async function submitPasswordChange() {
+  const { oldPassword, newPassword, confirmPassword } = passwordForm.value
+  if (!oldPassword || !newPassword || !confirmPassword) {
+    ElMessage.warning('请填写完整')
+    return
+  }
+  if (newPassword.length < 6) {
+    ElMessage.warning('新密码至少 6 位')
+    return
+  }
+  if (newPassword !== confirmPassword) {
+    ElMessage.warning('两次输入的新密码不一致')
+    return
+  }
+  changingPassword.value = true
+  try {
+    const message = await authStore.changePassword(oldPassword, newPassword)
+    ElMessage.success(message || '密码修改成功')
+    passwordDialogVisible.value = false
+  } catch (error: any) {
+    ElMessage.error(extractApiError(error, '密码修改失败'))
+  } finally {
+    changingPassword.value = false
+  }
 }
 </script>
 

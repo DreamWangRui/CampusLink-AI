@@ -4,7 +4,12 @@
  */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { adminLogin as adminLoginApi, login as loginApi, register as registerApi } from '../api/auth'
+import {
+  adminLogin as adminLoginApi,
+  changePassword as changePasswordApi,
+  login as loginApi,
+  register as registerApi,
+} from '../api/auth'
 
 const TOKEN_KEY = 'campuslink_token'
 const NAME_KEY = 'campuslink_user_name'
@@ -51,6 +56,12 @@ export const useAuthStore = defineStore('auth', () => {
     await login(username, password)
   }
 
+  /** 修改当前登录用户密码（普通用户），返回结果消息 */
+  async function changePassword(oldPassword: string, newPassword: string): Promise<string> {
+    const resp = await changePasswordApi(oldPassword, newPassword)
+    return resp.message
+  }
+
   /** 退出登录 */
   function logout(): void {
     token.value = ''
@@ -61,5 +72,8 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem(ROLE_KEY)
   }
 
-  return { token, username, role, isLoggedIn, isAdmin, login, adminLogin, register, logout }
+  return {
+    token, username, role, isLoggedIn, isAdmin,
+    login, adminLogin, register, logout, changePassword,
+  }
 })

@@ -1,7 +1,7 @@
 """
 管理面鉴权
 知识库管理接口（上传/删除/移动/列表）需要管理员登录；聊天问答保持公开，
-普通用户可选注册/登录以同步聊天记录。
+普通用户可选注册/登录以同步聊天记录、修改密码。
 
 两种通过方式：
 1. Authorization: Bearer <token> —— POST /api/auth/login 签发（前端使用）
@@ -19,7 +19,7 @@ import logging
 import secrets
 import time
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from app import config
@@ -40,6 +40,8 @@ _fallback_secret = secrets.token_hex(32)
 
 router = APIRouter(prefix="/api/auth", tags=["鉴权"])
 
+
+# ==================== 请求/响应模型 ====================
 
 class LoginRequest(BaseModel):
     """登录请求"""
@@ -78,6 +80,21 @@ class RegisterRequest(BaseModel):
         return v
 
 
+class ChangePasswordRequest(BaseModel):
+    """修改密码请求"""
+    old_password: str = Field(..., description="原密码")
+    new_password: str = Field(..., description="新密码（至少 6 位）")
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_rules(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("新密码至少 6 位")
+        if len(v) > 100:
+            raise ValueError("新密码最多 100 位")
+        return v
+
+
 class LoginResponse(BaseModel):
     """登录响应"""
     token: str = Field(..., description="访问令牌（Authorization: Bearer <token>）")
@@ -85,6 +102,8 @@ class LoginResponse(BaseModel):
     username: str = Field(..., description="登录身份")
     role: str = Field(..., description="角色：admin / user")
 
+
+# ==================== 令牌签发与校验 ====================
 
 def _secret() -> bytes:
     return (config.SECRET_KEY or _fallback_secret).encode()
@@ -120,6 +139,75 @@ def verify_token(token: str) -> tuple[str, str] | None:
         return None
 
 
+
+
+def require_user(request: Request) -> tuple[str, str]:
+    """
+    FastAPI 依赖：要求任意有效登录身份（管理员或普通用户），
+    返回 (角色, 身份)，用于按身份存取数据
+
+    Raises:
+        HTTPException: 401 未登录/令牌过期
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        parsed = verify_token(auth_header[7:].strip())
+        if parsed:
+            return parsed
+        raise HTTPException(
+            status_code=401,
+            detail="登录已过期，请重新登录",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    raise HTTPException(
+        status_code=401,
+        detail="请先登录",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def require_admin(request: Request) -> None:
+    """
+    FastAPI 依赖：要求管理员身份
+    通过条件（满足其一）：
+    1. Authorization: Bearer <admin 角色令牌>
+    2. X-Admin-Key 与 ADMIN_KEY 匹配（配置了 ADMIN_KEY 时）
+
+    Raises:
+        HTTPException: 401 未登录/令牌过期/密钥错误；403 普通用户角色
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        parsed = verify_token(auth_header[7:].strip())
+        if parsed is None:
+            raise HTTPException(
+                status_code=401,
+                detail="登录已过期，请重新登录",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        role, _identity = parsed
+        if role == "admin":
+            return
+        raise HTTPException(
+            status_code=403,
+            detail="需要管理员权限",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    admin_key = config.ADMIN_KEY
+    provided = request.headers.get(ADMIN_KEY_HEADER, "")
+    if admin_key and provided and secrets.compare_digest(provided, admin_key):
+        return
+
+    logger.warning("管理接口鉴权失败: %s %s", request.method, request.url.path)
+    raise HTTPException(
+        status_code=401,
+        detail="请先登录（管理员账号）",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+# ==================== 登录 / 注册 / 修改密码 ====================
+
 @router.post("/register", summary="注册普通用户")
 def register(body: RegisterRequest) -> dict:
     """
@@ -138,7 +226,7 @@ def register(body: RegisterRequest) -> dict:
 @router.post("/login", summary="登录（管理员或普通用户），签发访问令牌")
 def login(request: Request, body: LoginRequest) -> LoginResponse:
     """
-    统一登录入口：管理员账号与管理员后台配置匹配则签发 admin 令牌；
+    统一登录入口：管理员账号与管理员配置匹配则签发 admin 令牌；
     否则尝试普通用户表。同 IP 连续失败 5 次将锁定 5 分钟（防暴力破解）。
     """
     ip = request.client.host if request.client else "unknown"
@@ -185,67 +273,29 @@ def login(request: Request, body: LoginRequest) -> LoginResponse:
     raise _fail()
 
 
-def require_user(request: Request) -> tuple[str, str]:
+@router.put("/password", summary="修改当前登录用户密码")
+def change_password(
+    body: ChangePasswordRequest,
+    identity_tuple: tuple[str, str] = Depends(require_user),
+) -> dict:
     """
-    FastAPI 依赖：要求任意有效登录身份（管理员或普通用户），
-    返回 (角色, 身份)，用于按身份存取数据
-
-    Raises:
-        HTTPException: 401 未登录/令牌过期
+    修改当前登录账号的密码（普通用户）。
+    管理员密码由环境变量 ADMIN_PASSWORD 管理，不支持在线修改。
     """
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        parsed = verify_token(auth_header[7:].strip())
-        if parsed:
-            return parsed
+    role, identity = identity_tuple
+    if role == "admin":
         raise HTTPException(
-            status_code=401,
-            detail="登录已过期，请重新登录",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=400,
+            detail="管理员密码由环境变量 ADMIN_PASSWORD 管理，请在 .env 中修改并重启服务",
         )
-    raise HTTPException(
-        status_code=401,
-        detail="请先登录",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    if not user_db.verify_user(identity, body.old_password):
+        raise HTTPException(status_code=400, detail="原密码错误")
+    try:
+        user_db.update_password(identity, body.new_password)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info("用户 %s 修改了密码", identity)
+    return {"success": True, "message": "密码修改成功"}
 
 
-def require_admin(request: Request) -> None:
-    """
-    FastAPI 依赖：要求管理员身份
-    通过条件（满足其一）：
-    1. Authorization: Bearer <admin 角色令牌>
-    2. X-Admin-Key 与 ADMIN_KEY 匹配（配置了 ADMIN_KEY 时）
-
-    Raises:
-        HTTPException: 401 未登录/令牌过期/权限不足/密钥错误
-    """
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        parsed = verify_token(auth_header[7:].strip())
-        if parsed is None:
-            raise HTTPException(
-                status_code=401,
-                detail="登录已过期，请重新登录",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        role, _identity = parsed
-        if role == "admin":
-            return
-        raise HTTPException(
-            status_code=403,
-            detail="需要管理员权限",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    admin_key = config.ADMIN_KEY
-    provided = request.headers.get(ADMIN_KEY_HEADER, "")
-    if admin_key and provided and secrets.compare_digest(provided, admin_key):
-        return
-
-    logger.warning("管理接口鉴权失败: %s %s", request.method, request.url.path)
-    raise HTTPException(
-        status_code=401,
-        detail="请先登录（管理员账号）",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+# ==================== 鉴权依赖 ====================

@@ -22,3 +22,11 @@ export const adminLogin = login
 export async function register(username: string, password: string): Promise<{ username: string }> {
   return api.post('/auth/register', { username, password })
 }
+
+/**
+ * 修改当前登录用户密码（普通用户；管理员密码由环境变量管理）
+ * PUT /api/auth/password
+ */
+export async function changePassword(oldPassword: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+  return api.put('/auth/password', { old_password: oldPassword, new_password: newPassword })
+}

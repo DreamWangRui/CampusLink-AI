@@ -428,6 +428,48 @@ def test_brute_force_lockout():
     auth_module._login_attempts.clear()
 
 
+# ==================== 修改密码 ====================
+
+def test_change_password_flow():
+    """普通用户改密：原密码校验 → 中文长度提示 → 修改生效（旧失效新可登录）"""
+    _enable_real_auth()
+    client.post("/api/auth/register", json={"username": "改密用户", "password": "old666"})
+    r = client.post("/api/auth/login", json={"username": "改密用户", "password": "old666"})
+    headers = {"Authorization": f"Bearer {r.json()['token']}"}
+
+    # 原密码错误
+    r = client.put("/api/auth/password", json={"old_password": "wrong", "new_password": "new666"}, headers=headers)
+    assert r.status_code == 400 and "原密码错误" in r.json()["detail"]
+
+    # 新密码过短 → 422 中文文案
+    r = client.put("/api/auth/password", json={"old_password": "old666", "new_password": "123"}, headers=headers)
+    assert r.status_code == 422
+    assert any("新密码至少 6 位" in d["msg"] for d in r.json()["detail"])
+
+    # 正常修改
+    r = client.put("/api/auth/password", json={"old_password": "old666", "new_password": "new666"}, headers=headers)
+    assert r.status_code == 200
+
+    # 旧密码失效，新密码可登录
+    r = client.post("/api/auth/login", json={"username": "改密用户", "password": "old666"})
+    assert r.status_code == 401
+    r = client.post("/api/auth/login", json={"username": "改密用户", "password": "new666"})
+    assert r.status_code == 200
+
+
+def test_change_password_admin_rejected():
+    """管理员密码由环境变量管理，不支持在线修改"""
+    _enable_real_auth()
+    token = _login_token()
+    r = client.put(
+        "/api/auth/password",
+        json={"old_password": "admin123", "new_password": "new666"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 400
+    assert "ADMIN_PASSWORD" in r.json()["detail"]
+
+
 # ==================== 健康检查 ====================
 
 def test_health_endpoint(monkeypatch):
