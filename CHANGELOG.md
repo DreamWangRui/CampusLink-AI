@@ -4,6 +4,29 @@
 
 ---
 
+## [2026-08-30] 变更十四：单元测试 + GitHub Actions CI
+
+> 对应《优化建议.md》#15 —— 此前零测试零 CI，切分/阈值/校验逻辑改动全靠手工验证。
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `backend/pyproject.toml` | dev 依赖组（pytest、ruff）；ruff 配置（line-length 100，项目化忽略 BLE001/B008/DTZ005 并注明理由）；pytest `pythonpath` 配置 |
+| `backend/app/*` | ruff 全库修复 51 处（import 排序、死代码等） |
+| `backend/app/database/chroma_client.py` | 加 `from __future__ import annotations`——**修复 ruff 自动改写的隐患**：chromadb 的 `PersistentClient` 是工厂函数而非类，`Optional[X] → X \| None` 改写在运行时立即求值会 TypeError |
+| `app/services/rag_service.py` | 元问题识别补充"您"称谓变体（测试驱动发现的真实缺口） |
+| `backend/tests/` | 34 个用例：切分纯函数（合并/滑窗/语义边界）、元问题识别（含混合句反例）、阈值过滤与兜底、上传校验（穿越名/超限/重复/成功流含 file_hash）、移动/删除（孤儿清理）、SSE 事件序列、异步任务往返、健康检查——全部 mock 外部依赖，2 秒跑完无网络无模型 |
+| `frontend/src/utils/format.ts` + `tests/` | vitest 接入：格式化工具、知识库 store（mock API 层）5 个用例 |
+| `.github/workflows/ci.yml` | 双 job：backend（ruff + pytest）/ frontend（vitest + vue-tsc 构建），push/PR 触发 |
+
+### 核验检查
+
+1. ✅ 本地：`ruff check app tests` 全绿；`pytest` 34 passed（1.8s）；`vitest` 5 passed；`pnpm build` 通过；
+2. ✅ **GitHub Actions 实跑验证**：commit `25912f8` 触发 CI run #1，backend + frontend 双 job **success**。
+
+---
+
 ## [2026-08-30] 变更十三：日志体系
 
 > 对应《优化建议.md》#14 —— 全部 print 换为标准 logging，关键链路打点为后续调参提供数据。
