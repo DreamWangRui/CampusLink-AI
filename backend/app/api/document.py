@@ -3,14 +3,13 @@
 支持批量上传和文件夹分类：POST /api/document/upload
 """
 
-import os
 import uuid
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 
-from app.config import UPLOAD_DIR, SUPPORTED_EXTENSIONS
+from app.config import UPLOAD_DIR, SUPPORTED_EXTENSIONS, MAX_FILE_SIZE
 from app.models.schemas import BatchUploadResponse, BatchUploadFileResult
 from app.services.document_service import parse_file
 from app.services.splitter_service import split_text
@@ -24,7 +23,7 @@ router = APIRouter(prefix="/api/document", tags=["文档管理"])
 
 def _process_single_file(file: UploadFile, folder: str) -> BatchUploadFileResult:
     """
-    处理单个文件：保存 → 解析 → 切分 → 向量化 → 入库
+    处理单个文件：校验 → 保存 → 解析 → 切分 → 向量化 → 入库
 
     Args:
         file: 上传的文件对象
@@ -33,35 +32,48 @@ def _process_single_file(file: UploadFile, folder: str) -> BatchUploadFileResult
     Returns:
         BatchUploadFileResult: 该文件的处理结果
     """
-    # ---- 校验文件格式 ----
+    # ---- 校验文件名（取纯文件名，防止路径穿越）----
     if not file.filename:
         return BatchUploadFileResult(
             success=False, filename="未知文件", message="文件名不能为空"
         )
+    # Path(...).name 剥离可能携带的目录成分（如 ../../evil.txt → evil.txt）
+    safe_filename = Path(file.filename).name
+    if not safe_filename:
+        return BatchUploadFileResult(
+            success=False, filename="未知文件", message="文件名不能为空"
+        )
 
-    extension = Path(file.filename).suffix.lower()
+    # ---- 校验文件格式 ----
+    extension = Path(safe_filename).suffix.lower()
     if extension not in SUPPORTED_EXTENSIONS:
         return BatchUploadFileResult(
             success=False,
-            filename=file.filename,
+            filename=safe_filename,
             message=f"不支持的文件格式: {extension}，支持的格式: {', '.join(SUPPORTED_EXTENSIONS)}",
         )
 
-    # ---- 保存文件到磁盘 ----
-    unique_filename = f"{uuid.uuid4().hex}_{file.filename}"
+    # ---- 保存文件到磁盘（限制大小，防止超大文件打爆内存/磁盘）----
+    unique_filename = f"{uuid.uuid4().hex}_{safe_filename}"
     file_path = UPLOAD_DIR / unique_filename
 
     try:
-        content = file.file.read()
+        content = file.file.read(MAX_FILE_SIZE + 1)
         if not content:
             return BatchUploadFileResult(
-                success=False, filename=file.filename, message="上传的文件为空"
+                success=False, filename=safe_filename, message="上传的文件为空"
+            )
+        if len(content) > MAX_FILE_SIZE:
+            return BatchUploadFileResult(
+                success=False,
+                filename=safe_filename,
+                message=f"文件超过大小限制（最大 {MAX_FILE_SIZE // (1024 * 1024)}MB）",
             )
         with open(file_path, "wb") as f:
             f.write(content)
     except Exception as e:
         return BatchUploadFileResult(
-            success=False, filename=file.filename, message=f"文件保存失败: {str(e)}"
+            success=False, filename=safe_filename, message=f"文件保存失败: {str(e)}"
         )
 
     # ---- 解析文本 ----
@@ -70,12 +82,12 @@ def _process_single_file(file: UploadFile, folder: str) -> BatchUploadFileResult
     except ValueError as e:
         if file_path.exists():
             file_path.unlink()
-        return BatchUploadFileResult(success=False, filename=file.filename, message=str(e))
+        return BatchUploadFileResult(success=False, filename=safe_filename, message=str(e))
     except Exception as e:
         if file_path.exists():
             file_path.unlink()
         return BatchUploadFileResult(
-            success=False, filename=file.filename, message=f"文档解析失败: {str(e)}"
+            success=False, filename=safe_filename, message=f"文档解析失败: {str(e)}"
         )
 
     # ---- 文本切分 ----
@@ -84,7 +96,7 @@ def _process_single_file(file: UploadFile, folder: str) -> BatchUploadFileResult
         if file_path.exists():
             file_path.unlink()
         return BatchUploadFileResult(
-            success=False, filename=file.filename, message="文档内容为空，无法导入知识库"
+            success=False, filename=safe_filename, message="文档内容为空，无法导入知识库"
         )
 
     # ---- 向量化并存入 ChromaDB ----
@@ -92,7 +104,7 @@ def _process_single_file(file: UploadFile, folder: str) -> BatchUploadFileResult
 
     metadata = {
         "doc_id": doc_id,
-        "filename": file.filename,
+        "filename": safe_filename,
         "original_file": unique_filename,
         "folder": folder or "",
         "upload_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -105,12 +117,12 @@ def _process_single_file(file: UploadFile, folder: str) -> BatchUploadFileResult
         if file_path.exists():
             file_path.unlink()
         return BatchUploadFileResult(
-            success=False, filename=file.filename, message=f"向量化存储失败: {str(e)}"
+            success=False, filename=safe_filename, message=f"向量化存储失败: {str(e)}"
         )
 
     return BatchUploadFileResult(
         success=True,
-        filename=file.filename,
+        filename=safe_filename,
         chunk_count=chunk_count,
         message=f"导入成功，共 {chunk_count} 个 Chunk",
     )
@@ -119,7 +131,7 @@ def _process_single_file(file: UploadFile, folder: str) -> BatchUploadFileResult
 # ==================== 批量上传接口 ====================
 
 @router.post("/upload", response_model=BatchUploadResponse, summary="批量上传文档并导入知识库")
-async def upload_documents(
+def upload_documents(
     files: list[UploadFile] = File(...),
     folder: str = Form(""),
 ) -> BatchUploadResponse:
@@ -133,6 +145,10 @@ async def upload_documents(
 
     Returns:
         BatchUploadResponse: 每个文件的处理结果和汇总信息
+
+    Note:
+        使用同步 def 而非 async def：文件读写、解析和向量化均为阻塞操作，
+        FastAPI 会将同步端点放入线程池执行，避免阻塞事件循环。
     """
     if not files:
         raise HTTPException(status_code=400, detail="请至少上传一个文件")
@@ -143,8 +159,6 @@ async def upload_documents(
     for file in files:
         try:
             result = _process_single_file(file, folder)
-            # 重置文件读取位置（_process_single_file 可能已读取）
-            await file.seek(0)
         except Exception as e:
             result = BatchUploadFileResult(
                 success=False,

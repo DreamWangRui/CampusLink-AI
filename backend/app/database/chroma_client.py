@@ -147,7 +147,7 @@ def search_similar(query: str, top_k: int = 5) -> list[dict]:
     return documents
 
 
-def delete_document(doc_id: str) -> bool:
+def delete_document(doc_id: str) -> list[str]:
     """
     删除指定文档的所有 Chunk
 
@@ -155,21 +155,24 @@ def delete_document(doc_id: str) -> bool:
         doc_id: 文档唯一标识
 
     Returns:
-        bool: 是否成功删除
+        list[str]: 该文档关联的原始上传文件名列表（存储在 uploads/ 下），
+                   供调用方同步清理磁盘文件；文档不存在时返回空列表
     """
     collection = get_collection()
 
-    try:
-        # 获取该文档下的所有 chunk ID
-        results = collection.get(
-            where={"doc_id": doc_id},
-        )
-        if results["ids"]:
-            # 批量删除所有 chunk
-            collection.delete(ids=results["ids"])
-        return True
-    except Exception:
-        return False
+    # 仅拉取 metadata（不取正文），找出关联的原始文件
+    found = collection.get(where={"doc_id": doc_id}, include=["metadatas"])
+    if not found["ids"]:
+        return []
+
+    original_files = {
+        metadata.get("original_file")
+        for metadata in found["metadatas"]
+        if metadata.get("original_file")
+    }
+
+    collection.delete(ids=found["ids"])
+    return list(original_files)
 
 
 def get_all_documents(folder: str | None = None) -> list[dict]:

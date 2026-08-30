@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api", tags=["聊天"])
 
 
 @router.post("/chat", response_model=ChatResponse, summary="发送问题进行问答")
-async def chat(request: ChatRequest) -> ChatResponse:
+def chat(request: ChatRequest) -> ChatResponse:
     """
     接收用户问题，通过 RAG 流程检索知识库并生成回答
 
@@ -27,11 +27,16 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
     Returns:
         ChatResponse: 包含 AI 回答的响应体
+
+    Note:
+        使用同步 def 而非 async def：RAG 流程包含 CPU 密集的向量化计算和
+        阻塞的 LLM 网络调用，FastAPI 会将同步端点放入线程池执行，
+        避免阻塞事件循环导致其他请求排队。
     """
     try:
         # 调用 RAG 服务执行完整的问答流程：
-        # 用户提问 → 向量检索 → Top5 相关片段 → DeepSeek 生成回答
-        answer, retrieved_docs = rag_query(request.question)
+        # 用户提问 → 向量检索 → 相似度过滤 → DeepSeek 生成回答
+        answer, _ = rag_query(request.question)
         return ChatResponse(answer=answer)
     except Exception as e:
         # 捕获所有异常，返回友好的错误提示

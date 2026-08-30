@@ -5,6 +5,7 @@
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app.config import UPLOAD_DIR
 from app.models.schemas import (
     KnowledgeDocument,
     KnowledgeListResponse,
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/api/knowledge", tags=["知识库管理"])
 
 
 @router.get("/list", response_model=KnowledgeListResponse, summary="获取知识库文档列表（支持按文件夹筛选）")
-async def list_documents(folder: str = Query(None, description="可选，按文件夹名称筛选")) -> KnowledgeListResponse:
+def list_documents(folder: str = Query(None, description="可选，按文件夹名称筛选")) -> KnowledgeListResponse:
     """
     获取知识库中所有文档的统计信息
     包含文档名称、所属文件夹、上传时间、Chunk 数量
@@ -30,6 +31,9 @@ async def list_documents(folder: str = Query(None, description="可选，按文�
 
     Returns:
         KnowledgeListResponse: 文档列表和总数
+
+    Note:
+        使用同步 def：ChromaDB 查询为阻塞操作，由 FastAPI 线程池执行
     """
     try:
         docs = get_all_documents(folder=folder)
@@ -52,7 +56,7 @@ async def list_documents(folder: str = Query(None, description="可选，按文�
 
 
 @router.get("/folders", summary="获取所有文件夹/分类列表")
-async def list_folders():
+def list_folders():
     """
     获取所有文件夹及其下的文档数量
 
@@ -72,9 +76,10 @@ async def list_folders():
 
 
 @router.delete("/delete", response_model=DeleteDocumentResponse, summary="删除知识库文档")
-async def delete_knowledge_document(request: DeleteDocumentRequest) -> DeleteDocumentResponse:
+def delete_knowledge_document(request: DeleteDocumentRequest) -> DeleteDocumentResponse:
     """
-    删除指定文档的所有 Chunk
+    删除指定文档的所有 Chunk，并同步清理 uploads/ 下的原始文件
+    （否则磁盘上的源文件会成为永久残留的孤儿文件）
 
     Args:
         request: 包含要删除的文档 ID
@@ -83,16 +88,27 @@ async def delete_knowledge_document(request: DeleteDocumentRequest) -> DeleteDoc
         DeleteDocumentResponse: 操作结果
     """
     try:
-        success = delete_document(request.doc_id)
-        if success:
-            return DeleteDocumentResponse(
-                success=True,
-                message=f"文档 '{request.doc_id}' 已成功删除",
-            )
-        else:
+        original_files = delete_document(request.doc_id)
+        if not original_files:
             return DeleteDocumentResponse(
                 success=False,
-                message=f"删除文档 '{request.doc_id}' 失败",
+                message=f"文档 '{request.doc_id}' 不存在或删除失败",
             )
+
+        # 清理磁盘上的原始上传文件（缺失时忽略，不阻断删除流程）
+        removed = 0
+        for filename in original_files:
+            file_path = UPLOAD_DIR / filename
+            try:
+                if file_path.is_file():
+                    file_path.unlink()
+                    removed += 1
+            except OSError:
+                pass
+
+        message = f"文档 '{request.doc_id}' 已成功删除"
+        if removed:
+            message += f"，并清理了 {removed} 个源文件"
+        return DeleteDocumentResponse(success=True, message=message)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"删除文档失败: {str(e)}")
