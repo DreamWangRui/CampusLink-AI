@@ -62,7 +62,7 @@
               :value="f.name"
             />
           </el-select>
-          <span class="folder-hint">留空则归入"未分类"</span>
+          <span class="folder-hint">可选择已有分类或直接输入新分类名（自动创建），留空归入"未分类"</span>
         </div>
 
         <!-- 文件列表 -->
@@ -156,8 +156,12 @@
             <el-tag size="small" type="info">{{ row.chunk_count }} 个</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" align="center">
+        <el-table-column label="操作" width="170" align="center">
           <template #default="{ row }">
+            <el-button type="primary" size="small" :icon="'Position'" link
+              @click="openMoveDialog(row)">
+              移动
+            </el-button>
             <el-popconfirm
               title="确定要删除该文档吗？"
               confirm-button-text="确认删除"
@@ -174,6 +178,40 @@
         </el-table-column>
       </el-table>
     </div>
+
+    <!-- 移动文档弹窗 -->
+    <el-dialog
+      v-model="moveDialogVisible"
+      :title="`移动文档：${moveTargetDoc?.filename ?? ''}`"
+      width="440px"
+    >
+      <div class="move-form-row">
+        <span class="move-label">目标分类：</span>
+        <el-select
+          v-model="moveFolderInput"
+          filterable
+          allow-create
+          default-first-option
+          placeholder="选择已有分类或输入新分类名"
+          style="flex: 1"
+        >
+          <el-option label="未分类" value="" />
+          <el-option
+            v-for="f in knowledgeStore.folders.filter(x => x.name !== '未分类')"
+            :key="f.name"
+            :label="`${f.name} (${f.document_count} 个文档)`"
+            :value="f.name"
+          />
+        </el-select>
+      </div>
+      <p class="move-hint">输入列表中没有的分类名即自动创建新分类；留空归入"未分类"。</p>
+      <template #footer>
+        <el-button @click="moveDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="knowledgeStore.loading" @click="handleMove">
+          确认移动
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -182,6 +220,7 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useKnowledgeStore } from '../store/knowledge'
 import type { UploadFile } from 'element-plus'
+import type { KnowledgeDocument } from '../types'
 
 // ==================== 知识库状态管理 ====================
 const knowledgeStore = useKnowledgeStore()
@@ -258,6 +297,39 @@ async function handleDelete(docId: string) {
     ElMessage.success(message)
   } catch (error: any) {
     ElMessage.error(typeof error === 'string' ? error : error.message || '删除失败')
+  }
+}
+
+// ==================== 移动文档 ====================
+/** 移动弹窗可见性 */
+const moveDialogVisible = ref(false)
+
+/** 待移动的文档 */
+const moveTargetDoc = ref<KnowledgeDocument | null>(null)
+
+/** 移动目标分类输入（空字符串 = 未分类） */
+const moveFolderInput = ref('')
+
+/**
+ * 打开移动弹窗（预填当前所在分类）
+ */
+function openMoveDialog(doc: KnowledgeDocument) {
+  moveTargetDoc.value = doc
+  moveFolderInput.value = doc.folder
+  moveDialogVisible.value = true
+}
+
+/**
+ * 确认移动
+ */
+async function handleMove() {
+  if (!moveTargetDoc.value) return
+  try {
+    const message = await knowledgeStore.moveDocument(moveTargetDoc.value.id, moveFolderInput.value.trim())
+    ElMessage.success(message)
+    moveDialogVisible.value = false
+  } catch (error: any) {
+    ElMessage.error(typeof error === 'string' ? error : error.message || '移动失败')
   }
 }
 
@@ -494,5 +566,25 @@ onMounted(() => {
 
 .loading-state {
   padding: 20px;
+}
+
+/* ==================== 移动文档弹窗 ==================== */
+.move-form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.move-label {
+  font-size: 14px;
+  color: #303133;
+  white-space: nowrap;
+}
+
+.move-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
 }
 </style>

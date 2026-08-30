@@ -157,8 +157,10 @@ docker compose down
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `POST` | `/api/chat` | 发送问题，获取 AI 回答 |
-| `POST` | `/api/document/upload` | 上传文档并导入知识库 |
+| `POST` | `/api/document/upload` | 批量上传文档并导入知识库（支持文件夹分类） |
 | `GET` | `/api/knowledge/list` | 获取知识库文档列表 |
+| `GET` | `/api/knowledge/folders` | 获取所有文件夹/分类列表 |
+| `PUT` | `/api/knowledge/move` | 移动文档到其他文件夹（新名称自动创建） |
 | `DELETE` | `/api/knowledge/delete` | 删除指定文档 |
 | `GET` | `/api/health` | 健康检查 |
 

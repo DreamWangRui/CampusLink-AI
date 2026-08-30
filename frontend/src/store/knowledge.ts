@@ -5,7 +5,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { KnowledgeDocument, FolderInfo } from '../types'
-import { getKnowledgeList, getFolders, deleteKnowledgeDocument, uploadDocuments } from '../api/knowledge'
+import { getKnowledgeList, getFolders, deleteKnowledgeDocument, moveKnowledgeDocument, uploadDocuments } from '../api/knowledge'
 
 export const useKnowledgeStore = defineStore('knowledge', () => {
   // ==================== 状态 ====================
@@ -112,10 +112,32 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     }
   }
 
+  /**
+   * 移动文档到其他文件夹（输入不存在的分类名即创建）
+   *
+   * @param docId - 文档 ID
+   * @param folder - 目标文件夹名称（留空归入未分类）
+   * @returns 操作结果消息
+   */
+  async function moveDocument(docId: string, folder: string): Promise<string> {
+    try {
+      const response = await moveKnowledgeDocument(docId, folder)
+      if (response.success) {
+        // 移动后刷新列表和文件夹计数
+        await loadDocuments()
+        await loadFolders()
+      }
+      return response.message
+    } catch (error: any) {
+      const msg = error?.response?.data?.detail || error.message || '移动失败'
+      throw new Error(msg)
+    }
+  }
+
   return {
     documents, total, loading, uploading,
     folders, selectedFolder,
     loadDocuments, loadFolders, setFolderFilter,
-    upload, removeDocument,
+    upload, removeDocument, moveDocument,
   }
 })

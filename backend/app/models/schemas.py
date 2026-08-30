@@ -47,6 +47,18 @@ class DeleteDocumentResponse(BaseModel):
     message: str = Field(..., description="操作结果消息")
 
 
+class MoveDocumentRequest(BaseModel):
+    """移动文档到其他文件夹请求模型"""
+    doc_id: str = Field(..., description="要移动的文档 ID")
+    folder: str = Field(..., description="目标文件夹名称（留空归入未分类，输入新名称即创建）", max_length=50)
+
+
+class MoveDocumentResponse(BaseModel):
+    """移动文档响应模型"""
+    success: bool = Field(..., description="是否移动成功")
+    message: str = Field(..., description="操作结果消息")
+
+
 class BatchUploadFileResult(BaseModel):
     """批量上传中单个文件的结果"""
     success: bool = Field(..., description="该文件是否上传成功")

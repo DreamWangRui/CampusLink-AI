@@ -175,6 +175,31 @@ def delete_document(doc_id: str) -> list[str]:
     return list(original_files)
 
 
+def move_document(doc_id: str, folder: str) -> int:
+    """
+    将文档移动到指定文件夹（更新其所有 Chunk 的 folder 元数据）
+    目标文件夹不存在时自动"创建"（分类是文档元数据的派生值，
+    首个文档移入即视为创建）
+
+    Args:
+        doc_id: 文档唯一标识
+        folder: 目标文件夹名称（空字符串表示未分类）
+
+    Returns:
+        int: 移动的 Chunk 数量，文档不存在时返回 0
+    """
+    collection = get_collection()
+
+    found = collection.get(where={"doc_id": doc_id}, include=["metadatas"])
+    if not found["ids"]:
+        return 0
+
+    # 用完整合并后的 metadata 更新，避免依赖 ChromaDB update 的部分合并语义
+    metadatas = [{**metadata, "folder": folder} for metadata in found["metadatas"]]
+    collection.update(ids=found["ids"], metadatas=metadatas)
+    return len(found["ids"])
+
+
 def get_all_documents(folder: str | None = None) -> list[dict]:
     """
     获取知识库中所有文档的统计信息

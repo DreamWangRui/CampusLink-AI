@@ -11,9 +11,16 @@ from app.models.schemas import (
     KnowledgeListResponse,
     DeleteDocumentRequest,
     DeleteDocumentResponse,
+    MoveDocumentRequest,
+    MoveDocumentResponse,
     FolderInfo,
 )
-from app.database.chroma_client import get_all_documents, get_all_folders, delete_document
+from app.database.chroma_client import (
+    get_all_documents,
+    get_all_folders,
+    delete_document,
+    move_document,
+)
 
 # 创建知识库路由
 router = APIRouter(prefix="/api/knowledge", tags=["知识库管理"])
@@ -112,3 +119,32 @@ def delete_knowledge_document(request: DeleteDocumentRequest) -> DeleteDocumentR
         return DeleteDocumentResponse(success=True, message=message)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"删除文档失败: {str(e)}")
+
+
+@router.put("/move", response_model=MoveDocumentResponse, summary="移动文档到其他文件夹")
+def move_knowledge_document(request: MoveDocumentRequest) -> MoveDocumentResponse:
+    """
+    将文档移动到指定文件夹（更新其所有 Chunk 的 folder 元数据）
+    输入不存在的文件夹名称即视为创建新分类；留空归入未分类
+
+    Args:
+        request: 包含文档 ID 和目标文件夹名称
+
+    Returns:
+        MoveDocumentResponse: 操作结果
+    """
+    folder = request.folder.strip()
+    try:
+        moved = move_document(request.doc_id, folder)
+        if not moved:
+            return MoveDocumentResponse(
+                success=False,
+                message=f"文档 '{request.doc_id}' 不存在",
+            )
+        display = folder if folder else "未分类"
+        return MoveDocumentResponse(
+            success=True,
+            message=f"已成功移动 {moved} 个 Chunk 到「{display}」",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"移动文档失败: {str(e)}")

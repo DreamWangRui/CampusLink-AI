@@ -2,7 +2,7 @@
  * 知识库管理相关 API
  */
 import api from './index'
-import type { KnowledgeListResponse, DeleteDocumentResponse, BatchUploadResponse, FolderInfo } from '../types'
+import type { KnowledgeListResponse, DeleteDocumentResponse, MoveDocumentResponse, BatchUploadResponse, FolderInfo } from '../types'
 
 /**
  * 获取知识库文档列表（支持按文件夹筛选）
@@ -35,6 +35,18 @@ export async function getFolders(): Promise<{ folders: FolderInfo[] }> {
  */
 export async function deleteKnowledgeDocument(docId: string): Promise<DeleteDocumentResponse> {
   return api.delete('/knowledge/delete', { data: { doc_id: docId } })
+}
+
+/**
+ * 移动文档到其他文件夹（输入不存在的分类名即创建）
+ * PUT /api/knowledge/move
+ *
+ * @param docId - 要移动的文档 ID
+ * @param folder - 目标文件夹名称（留空归入未分类）
+ * @returns 操作结果
+ */
+export async function moveKnowledgeDocument(docId: string, folder: string): Promise<MoveDocumentResponse> {
+  return api.put('/knowledge/move', { doc_id: docId, folder })
 }
 
 /**

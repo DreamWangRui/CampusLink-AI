@@ -48,6 +48,18 @@ export interface DeleteDocumentResponse {
   message: string
 }
 
+/** 移动文档请求 */
+export interface MoveDocumentRequest {
+  doc_id: string
+  folder: string
+}
+
+/** 移动文档响应 */
+export interface MoveDocumentResponse {
+  success: boolean
+  message: string
+}
+
 /** 批量上传中单个文件的结果 */
 export interface BatchUploadFileResult {
   success: boolean
