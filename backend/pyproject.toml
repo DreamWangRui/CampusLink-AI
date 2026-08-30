@@ -10,7 +10,6 @@ dependencies = [
     # 显式声明：1.21.0 存在 httpx 客户端被提前关闭的 bug（模型联网校验失败），
     # 导致 RAG 检索全链路报 "Cannot send a request, as the client has been closed."
     "huggingface-hub>=1.29.0",
-    "markdown>=3.10.2",
     "openai>=2.44.0",
     "pydantic>=2.13.4",
     "pypdf>=6.14.2",

@@ -172,24 +172,27 @@ curl -X POST http://localhost:8000/api/chat \
   -d '{"question": "校园卡丢了怎么办？"}'
 ```
 
-**文档上传:**
+**文档上传（支持批量与分类）:**
 
 ```bash
 curl -X POST http://localhost:8000/api/document/upload \
-  -F "file=@campus_guide.pdf"
+  -F "files=@campus_guide.pdf" \
+  -F "folder=校园指南"
 ```
 
 ## 🔄 业务流程
 
 ### 文档导入
 ```
-上传文件 → 解析文本 → 文本切分(500字/块) → Embedding 向量化 → ChromaDB 存储
+上传文件(≤20MB) → 解析文本 → 文本切分(800字/块，重叠200) → Embedding 向量化 → ChromaDB 存储
 ```
 
 ### 智能问答
 ```
-用户提问 → Embedding 向量化 → 语义检索(Top5) → 构造 Prompt → DeepSeek → 返回答案
+用户提问 → Embedding 向量化 → 语义检索(Top7) → 相似度阈值过滤(distance ≤ 0.8) → 构造 Prompt → DeepSeek → 返回答案
 ```
+
+> 阈值标定依据：相关查询余弦距离实测约 0.5~0.65，无关查询约 1.3+；全部片段被过滤时直接返回"暂无相关信息"，不再调用 LLM。
 
 ## 🗺️ 版本路线
 

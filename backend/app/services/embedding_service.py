@@ -47,25 +47,9 @@ def get_embedding_model() -> SentenceTransformer:
     return _embedding_model
 
 
-def embed_text(text: str) -> list[float]:
-    """
-    将单段文本转换为向量
-
-    Args:
-        text: 待向量化的文本
-
-    Returns:
-        list[float]: 512 维的向量表示
-    """
-    model = get_embedding_model()
-    # encode 返回 numpy array，转换为 Python list
-    embedding = model.encode(text, normalize_embeddings=True)
-    return embedding.tolist()
-
-
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """
-    批量将文本转换为向量（用于文档导入时批量处理）
+    批量将文本转换为向量（文档导入与查询检索共用）
 
     Args:
         texts: 待向量化的文本列表

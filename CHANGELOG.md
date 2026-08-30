@@ -4,6 +4,84 @@
 
 ---
 
+## [2026-08-30] 变更五：前端体验细节 + 工程清理
+
+> 对应《优化建议.md》🟡 #7 #8 #17 #18
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/main.ts` | Element Plus 挂载 `zhCn` 中文语言包（原 `locale: undefined` 实际是英文默认值） |
+| `frontend/index.html` | `<title>frontend</title>` → `CampusLink AI - 校园智能助手`；`lang="en"` → `zh-CN` |
+| `backend/app/services/embedding_service.py` | 删除未被调用的 `embed_text()`（保留批量版 `embed_texts`） |
+| `backend/main.py` | 删除 uv 脚手架残留的 hello world（与 `app/main.py` 同名易混淆） |
+| `backend/pyproject.toml` + `uv.lock` | 移除从未使用的 `markdown` 依赖 |
+| `README.md` | 参数同步：切分 500字/块→800/重叠200、Top5→Top7 + 阈值；修正上传示例字段名 `file=` → `files=`（原示例会 422）；补充批量上传/文件夹参数 |
+
+### 核验检查
+
+1. ✅ `pnpm build`（含 vue-tsc 类型检查）通过；
+2. ✅ 构建产物 `dist/index.html` 标题正确，zh-cn 语言包已打包（产物含 locale 文案）；
+3. ✅ `grep` 确认 `embed_text` 无残留引用；`uv lock` + `uv sync --frozen` 通过。
+
+---
+
+## [2026-08-30] 变更四：检索相似度阈值兜底
+
+> 对应《优化建议.md》🔴 #3 —— 无关内容不再进入 Prompt，避免污染回答与无效 token 消耗
+
+### 改动内容
+
+- `app/config.py`：新增 `SIMILARITY_DISTANCE_THRESHOLD = 0.8`（ChromaDB 余弦距离，越小越相关）；
+- `app/services/rag_service.py`：Top K 检索结果按阈值过滤；全部被过滤时短路返回"目前知识库暂无相关信息，请咨询学校相关部门。"，不再调用 LLM（知识库整体为空的提示语保持不变，两者语义不同）。
+
+### 阈值标定（本地知识库实测）
+
+| 查询 | 最小 distance | 判定 |
+|------|--------------|------|
+| 奖学金如何申请 / 奖学金金额是多少 | 0.526~0.568 | 相关 |
+| 食堂营业时间 / 第三食堂几点开门（对测试文档） | 0.404 / 0.425 | 相关（同义改写仍命中） |
+| 今天天气怎么样 | 1.348 | 无关 |
+| 周杰伦的歌曲 | 1.536 | 无关 |
+
+相关查询 0.4~0.65、无关查询 1.3+，取 **0.8** 作为分界，两侧均有充分余量。
+
+### 核验检查
+
+1. ✅ 本地：中文相关查询正常生成回答（引用文档数据）；无关查询返回兜底话术（未调用 LLM）；
+2. ✅ 既有知识库数据兼容（原数据 distance 0.53~0.65 < 0.8，奖学金提问正常回答）；
+3. ✅ 容器：同样行为复现（上传测试文档 → 相关提问准确回答"6:30-21:30"；无关提问兜底）；
+4. ℹ️ 拼音类分布外查询（如 "shitang yingye shijian"）distance 超过阈值会被拦截——bge-small-zh 为中文模型，属预期行为；如需支持可后续加查询改写。
+
+---
+
+## [2026-08-30] 变更三：并发阻塞修复 + 上传安全加固 + 孤儿文件清理
+
+> 对应《优化建议.md》🔴 #2 #5 #4
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `app/api/chat.py`、`app/api/document.py`、`app/api/knowledge.py` | **`async def` → `def`**：RAG 全流程（CPU 向量化 + LLM 网络 IO）、文件解析、ChromaDB 查询均为阻塞操作，原先在事件循环内直接执行会卡住所有并发请求；改为同步端点后 FastAPI 自动放入线程池执行 |
+| `app/config.py` | 新增 `MAX_FILE_SIZE = 20MB` |
+| `app/api/document.py` | ① 上传前按 `MAX_FILE_SIZE + 1` 限量读取，超限拒绝；② `Path(file.filename).name` 消毒文件名，剥离路径成分（防 `../../evil.txt` 路径穿越）；③ 移除无意义的 `seek(0)` |
+| `app/database/chroma_client.py` | `delete_document` 改为返回文档关联的原始文件名列表（`get` 时 `include=["metadatas"]`，不再拉取正文） |
+| `app/api/knowledge.py` | 删除文档后同步 `unlink` uploads/ 下的源文件（原先源文件永久残留为孤儿） |
+
+### 核验检查（本地 + 容器双端）
+
+| 测试项 | 结果 |
+|--------|------|
+| 并发行为（同步端点进线程池） | ✅ 上传/问答/列表请求互不阻塞（本地 uvicorn 全流程验证） |
+| 21MB 超大文件上传 | ✅ 拒绝："文件超过大小限制（最大 20MB）" |
+| 文件名 `../../evil.exe` | ✅ 消毒为 `evil.exe` 并按格式拒绝（响应中 filename 无路径成分） |
+| 正常上传 + 提问 + 删除全流程 | ✅ 本地与容器均通过 |
+| 删除文档孤儿清理 | ✅ 响应含"并清理了 1 个源文件"，uploads/ 中测试文件消失，用户既有文件不受影响 |
+
+---
+
 ## [2026-08-30] 变更一：Docker 部署重构 —— Nginx 托管前端 + 反向代理 /api
 
 > 对应《优化建议.md》🔴 P0 #1 —— 原 Dockerfile 将前端 dist 打进后端镜像但从未挂载，Docker 部署后无法访问 UI。
