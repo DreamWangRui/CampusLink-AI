@@ -559,7 +559,7 @@ def test_stream_persists_into_session_and_autotitle(monkeypatch):
 
     # 标题自动更新为首条提问
     sessions = client.get("/api/chat/sessions", headers=headers).json()["sessions"]
-    target = [s for s in sessions if s["id"] == session["id"]][0]
+    target = next(s for s in sessions if s["id"] == session["id"])
     assert target["title"].startswith("帮我查")
 
     # 会话内消息持久化

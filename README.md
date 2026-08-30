@@ -10,6 +10,7 @@
 - 🔄 **多轮对话** — 追问自动改写（"那评定比例呢？"），上下文连贯问答
 - 👤 **用户系统** — 普通用户可选注册/登录，聊天记录云端同步（跨设备不丢）；未登录可匿名问答
 - 🗨️ **多会话** — 聊天页侧边栏可开启/切换/删除多个独立对话（登录云端同步、匿名本地保存）
+- 🗨️ **多会话** — 聊天页侧边栏可开启/切换/删除多个独立对话（登录云端同步、匿名本地保存）
 - 🔐 **管理面鉴权** — 知识库管理操作需管理员登录（默认 admin/admin123，可配置）
 - 📚 **文档导入** — 批量上传 PDF / DOCX / TXT / Markdown（SHA-256 去重、异步进度、表格解析）
 - 🔍 **语义检索** — BAAI/bge-small-zh-v1.5 向量检索 + 相似度阈值兜底
@@ -184,6 +185,11 @@ docker run --rm -v campuslink_chroma_data:/data -v "$(pwd)/backups":/backup alpi
 | `POST` | `/api/auth/login` | 登录（管理员/普通用户），签发令牌 |
 | `GET` | `/api/chat/history` | 获取当前用户云端聊天记录 🔒 |
 | `DELETE` | `/api/chat/history` | 清空当前用户云端聊天记录 🔒 |
+| `GET` | `/api/chat/sessions` | 获取会话列表（多会话）🔒 |
+| `POST` | `/api/chat/sessions` | 新建会话 🔒 |
+| `GET` | `/api/chat/sessions/{id}/messages` | 获取指定会话聊天记录 🔒 |
+| `DELETE` | `/api/chat/sessions/{id}/messages` | 清空指定会话聊天记录 🔒 |
+| `DELETE` | `/api/chat/sessions/{id}` | 删除会话 🔒 |
 | `POST` | `/api/chat` | 发送问题，获取 AI 回答 |
 | `POST` | `/api/chat/stream` | 流式问答（SSE） |
 | `POST` | `/api/document/upload` | 批量上传文档并导入知识库（支持文件夹分类）🔒 |
