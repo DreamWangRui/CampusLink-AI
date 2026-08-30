@@ -114,7 +114,7 @@
     <div class="document-section">
       <div class="section-header">
         <h3>已导入文档（{{ knowledgeStore.total }}）</h3>
-        <el-button :icon="'Refresh'" size="small" @click="refreshAll">
+        <el-button :icon="Refresh" size="small" @click="refreshAll">
           刷新
         </el-button>
       </div>
@@ -173,7 +173,7 @@
         </el-table-column>
         <el-table-column label="操作" width="170" align="center">
           <template #default="{ row }">
-            <el-button type="primary" size="small" :icon="'Position'" link
+            <el-button type="primary" size="small" :icon="Position" link
               @click="openMoveDialog(row)">
               移动
             </el-button>
@@ -184,7 +184,7 @@
               @confirm="handleDelete(row.id)"
             >
               <template #reference>
-                <el-button type="danger" size="small" :icon="'Delete'" link>
+                <el-button type="danger" size="small" :icon="Delete" link>
                   删除
                 </el-button>
               </template>
@@ -233,6 +233,18 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+// 显式使用的 ElMessage 需手动补样式（unplugin 只处理模板中的组件）
+import 'element-plus/es/components/message/style/css'
+import {
+  CircleCheckFilled,
+  CircleCloseFilled,
+  Close,
+  Delete,
+  Document,
+  Position,
+  Refresh,
+  UploadFilled,
+} from '@element-plus/icons-vue'
 import { useKnowledgeStore } from '../store/knowledge'
 import { formatFileSize } from '../utils/format'
 import type { UploadFile } from 'element-plus'

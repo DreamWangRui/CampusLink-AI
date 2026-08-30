@@ -36,7 +36,7 @@
       >
         <!-- 消息头像 -->
         <div class="message-avatar">
-          <el-avatar v-if="msg.role === 'user'" :size="36" icon="UserFilled" />
+          <el-avatar v-if="msg.role === 'user'" :size="36" :icon="UserFilled" />
           <el-avatar v-else :size="36" style="background-color: #409eff">
             🎓
           </el-avatar>
@@ -96,7 +96,7 @@
         <span class="input-hint">按 Enter 发送</span>
         <el-button
           type="primary"
-          :icon="'Promotion'"
+          :icon="Promotion"
           :loading="chatStore.loading"
           :disabled="!inputText.trim()"
           @click="handleSend"
@@ -109,9 +109,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, watch } from 'vue'
+import { ref, nextTick, watch } from 'vue'
 import { useChatStore } from '../store/chat'
 import MarkdownIt from 'markdown-it'
+import { Promotion, UserFilled } from '@element-plus/icons-vue'
 
 // ==================== 聊天状态管理 ====================
 const chatStore = useChatStore()
@@ -207,9 +208,6 @@ watch(
   }
 )
 
-onMounted(() => {
-  // 页面加载完成后显示欢迎界面（无需额外操作）
-})
 </script>
 
 <style scoped>

@@ -6,49 +6,53 @@
   - 主内容区（路由视图）
 -->
 <template>
-  <el-container class="app-layout">
-    <!-- 顶部导航栏 -->
-    <el-header class="app-header">
-      <div class="header-left">
-        <span class="header-logo">🎓</span>
-        <span class="header-title">CampusLink AI</span>
-        <span class="header-subtitle">校园智能助手</span>
-      </div>
-      <div class="header-right">
-        <el-tag size="small" type="info">V1.0 MVP</el-tag>
-      </div>
-    </el-header>
+  <el-config-provider :locale="zhCn">
+    <el-container class="app-layout">
+      <!-- 顶部导航栏 -->
+      <el-header class="app-header">
+        <div class="header-left">
+          <span class="header-logo">🎓</span>
+          <span class="header-title">CampusLink AI</span>
+          <span class="header-subtitle">校园智能助手</span>
+        </div>
+        <div class="header-right">
+          <el-tag size="small" type="info">V1.0 MVP</el-tag>
+        </div>
+      </el-header>
 
-    <el-container class="app-body">
-      <!-- 侧边导航菜单 -->
-      <el-aside class="app-sidebar" width="200px">
-        <el-menu
-          :default-active="activeMenu"
-          :router="true"
-          class="sidebar-menu"
-        >
-          <el-menu-item index="/">
-            <el-icon><ChatDotRound /></el-icon>
-            <span>智能问答</span>
-          </el-menu-item>
-          <el-menu-item index="/knowledge">
-            <el-icon><FolderOpened /></el-icon>
-            <span>知识库管理</span>
-          </el-menu-item>
-        </el-menu>
-      </el-aside>
+      <el-container class="app-body">
+        <!-- 侧边导航菜单 -->
+        <el-aside class="app-sidebar" width="200px">
+          <el-menu
+            :default-active="activeMenu"
+            :router="true"
+            class="sidebar-menu"
+          >
+            <el-menu-item index="/">
+              <el-icon><ChatDotRound /></el-icon>
+              <span>智能问答</span>
+            </el-menu-item>
+            <el-menu-item index="/knowledge">
+              <el-icon><FolderOpened /></el-icon>
+              <span>知识库管理</span>
+            </el-menu-item>
+          </el-menu>
+        </el-aside>
 
-      <!-- 主内容区域 -->
-      <el-main class="app-main">
-        <router-view />
-      </el-main>
+        <!-- 主内容区域 -->
+        <el-main class="app-main">
+          <router-view />
+        </el-main>
+      </el-container>
     </el-container>
-  </el-container>
+  </el-config-provider>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import { ChatDotRound, FolderOpened } from '@element-plus/icons-vue'
 
 // ==================== 路由状态 ====================
 const route = useRoute()

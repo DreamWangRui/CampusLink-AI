@@ -4,6 +4,33 @@
 
 ---
 
+## [2026-08-30] 变更十五：Element Plus 按需引入，主包体积 -79%
+
+> 对应《优化建议.md》#16 —— 全量引入 Element Plus + 全量注册约 290 个图标组件，主 JS 包 1122KB。
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `vite.config.ts` | 接入 `unplugin-vue-components` + `ElementPlusResolver`：模板中的 el-* 组件与样式自动按需导入 |
+| `src/main.ts` | 移除全量 `import ElementPlus`、全局图标注册循环、全量 CSS；中文语言包改由 `App.vue` 的 `el-config-provider` 配置 |
+| `src/App.vue` | `el-config-provider :locale="zhCn"` 包裹根布局；菜单图标本地导入 |
+| `src/views/ChatView.vue`、`KnowledgeView.vue` | 图标改为按需显式导入（Promotion/UserFilled/Refresh/Delete/Position/UploadFilled/Document/Close/CircleCheckFilled 等），`:icon="'Xxx'"` 字符串绑定改为组件绑定；`ElMessage` 手动补样式导入（unplugin 只处理模板组件）；顺带移除无作用的空 `onMounted` 钩子 |
+
+### 核验检查（构建 + 浏览器实测）
+
+| 测试项 | 结果 |
+|--------|------|
+| 主 JS 包体积 | ✅ **1122KB → 236KB（-79%）**；dist 总体积 1.7MB → 765KB（-55%） |
+| `pnpm build`（vue-tsc）+ `pnpm test` | ✅ 通过 |
+| 浏览器实测知识库页（截图） | ✅ 表格/标签/按钮/图标/样式全部正常 |
+| 浏览器实测聊天页（截图） | ✅ 欢迎页、推荐问题、输入区正常 |
+| 浏览器实测流式问答（点击推荐问题） | ✅ Markdown 回答完整渲染 + 7 个来源标签展示 |
+
+遗留观察：来源标签目前按片段逐条展示（同一文件会重复出现 7 个），可做同名去重合并为"等 7 个片段"，列入后续打磨。
+
+---
+
 ## [2026-08-30] 变更十四：单元测试 + GitHub Actions CI
 
 > 对应《优化建议.md》#15 —— 此前零测试零 CI，切分/阈值/校验逻辑改动全靠手工验证。
