@@ -23,6 +23,13 @@ export interface HistoryItem {
   content: string
 }
 
+/** 登录响应 */
+export interface LoginResponse {
+  token: string
+  expires_in: number
+  username: string
+}
+
 /** 聊天响应 */
 export interface ChatResponse {
   answer: string
