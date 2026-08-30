@@ -1,9 +1,10 @@
 /**
  * 聊天状态管理（Pinia Store）
  * 管理聊天消息列表和发送状态，使用 SSE 流式接口逐字渲染回答
+ * 聊天记录持久化到 localStorage：刷新页面不丢失（上限 50 条）
  */
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import type { ChatMessage, HistoryItem, SourceRef } from '../types'
 
 /** SSE 数据事件结构 */
@@ -14,13 +15,55 @@ interface StreamEvent {
   content?: string
 }
 
+const STORAGE_KEY = 'campuslink_chat_history'
+const MAX_STORED = 50
+
+/**
+ * 从 localStorage 恢复聊天记录（损坏/非法数据静默忽略）
+ */
+function loadMessages(): ChatMessage[] {
+  try {
+    if (typeof localStorage === 'undefined') return []
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter(
+        (m): m is ChatMessage =>
+          !!m &&
+          (m.role === 'user' || m.role === 'assistant') &&
+          typeof m.content === 'string' &&
+          m.content.length > 0,
+      )
+      .slice(-MAX_STORED)
+  } catch {
+    return []
+  }
+}
+
 export const useChatStore = defineStore('chat', () => {
   // ==================== 状态 ====================
-  /** 聊天消息列表 */
-  const messages = ref<ChatMessage[]>([])
+  /** 聊天消息列表（启动时从 localStorage 恢复） */
+  const messages = ref<ChatMessage[]>(loadMessages())
 
   /** 是否正在等待 AI 回复 */
   const loading = ref(false)
+
+  // ==================== 持久化 ====================
+  // 任何消息变化（发送/流式追加/清空）都同步写入 localStorage
+  watch(
+    messages,
+    () => {
+      try {
+        if (typeof localStorage === 'undefined') return
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.value.slice(-MAX_STORED)))
+      } catch {
+        // 隐私模式/配额不足时静默降级为仅内存
+      }
+    },
+    { deep: true },
+  )
 
   // ==================== 操作 ====================
 
@@ -45,13 +88,15 @@ export const useChatStore = defineStore('chat', () => {
     })
 
     // 先占位一条 AI 消息，流式过程中持续追加内容
-    const aiMessage: ChatMessage = {
+    // 注意：必须通过 messages.value[i]（响应式代理）追加内容，
+    // 直接改原始对象 Vue 检测不到变更——流式渲染与持久化 watch 都会失效
+    messages.value.push({
       role: 'assistant',
       content: '',
       time: new Date().toLocaleTimeString('zh-CN'),
       sources: [],
-    }
-    messages.value.push(aiMessage)
+    })
+    const aiMessage = messages.value[messages.value.length - 1]
     loading.value = true
 
     try {

@@ -93,7 +93,21 @@
         @keydown.enter.exact.prevent="handleSend"
       />
       <div class="input-actions">
-        <span class="input-hint">按 Enter 发送</span>
+        <div class="input-left">
+          <span class="input-hint">按 Enter 发送</span>
+          <el-popconfirm
+            v-if="chatStore.messages.length"
+            title="确定清空全部聊天记录？"
+            confirm-button-text="清空"
+            cancel-button-text="取消"
+            width="200"
+            @confirm="chatStore.clear()"
+          >
+            <template #reference>
+              <el-button size="small" text type="danger" :icon="Delete">清空对话</el-button>
+            </template>
+          </el-popconfirm>
+        </div>
         <el-button
           type="primary"
           :icon="Promotion"
@@ -112,7 +126,7 @@
 import { ref, nextTick, watch } from 'vue'
 import { useChatStore } from '../store/chat'
 import MarkdownIt from 'markdown-it'
-import { Promotion, UserFilled } from '@element-plus/icons-vue'
+import { Delete, Promotion, UserFilled } from '@element-plus/icons-vue'
 
 // ==================== 聊天状态管理 ====================
 const chatStore = useChatStore()
@@ -440,6 +454,12 @@ watch(
   justify-content: space-between;
   align-items: center;
   margin-top: 10px;
+}
+
+.input-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .input-hint {
