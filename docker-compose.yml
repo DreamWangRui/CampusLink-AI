@@ -27,6 +27,7 @@ services:
       # 持久化数据卷
       - chroma_data:/app/chroma_db   # ChromaDB 向量数据
       - upload_data:/app/uploads     # 上传的文件
+      - hf_cache:/root/.cache/huggingface  # Embedding 模型缓存（下载一次，重建容器不丢）
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
@@ -60,4 +61,7 @@ volumes:
     driver: local
   upload_data:
     name: campuslink_upload_data
+    driver: local
+  hf_cache:
+    name: campuslink_hf_cache
     driver: local

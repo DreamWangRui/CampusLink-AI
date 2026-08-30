@@ -4,8 +4,26 @@ Embedding 向量化服务
 模型特点：中文效果优秀、免费、本地运行、资源占用低
 """
 
-from sentence_transformers import SentenceTransformer
+import os
+from pathlib import Path
+
 from app.config import EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSION
+
+# ==================== HF 离线模式自动启用 ====================
+# 模型已在本地缓存时跳过 huggingface_hub 的联网元数据校验：
+# - 避免无代理网络下 SSL 失败后的多轮重试拖慢启动
+# - 规避 huggingface_hub 1.x httpx 客户端被提前关闭的问题
+# 首次在新环境运行（无缓存）时不启用，保证模型可以自动下载
+# 注意：必须在此处（sentence_transformers / huggingface_hub 导入之前）设置，
+#       huggingface_hub 在 import 时读取该环境变量
+_hf_cache_dir = Path(
+    os.environ.get("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
+) / "hub"
+if (_hf_cache_dir / f"models--{EMBEDDING_MODEL_NAME.replace('/', '--')}").exists():
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
+from sentence_transformers import SentenceTransformer  # noqa: E402
 
 # ==================== 全局 Embedding 模型实例 ====================
 # 模型在首次使用时加载，之后常驻内存

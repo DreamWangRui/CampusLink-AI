@@ -64,14 +64,38 @@
 
 ### 改动内容
 
-（实施后填写）
+| 文件 | 改动 |
+|------|------|
+| `backend/pyproject.toml` | 显式声明 `huggingface-hub>=1.29.0`（1.21.0 的 httpx 客户端 bug 上游已修复，升级后本地复现场景消失） |
+| `backend/uv.lock` | 锁定 hub 1.21.0 → 1.29.0（连带 hf-xet 1.5.1 → 1.6.0） |
+| `backend/app/services/embedding_service.py` | **模型已缓存时自动启用 HF 离线模式**（`HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1`）：跳过联网元数据校验，避免无代理网络下 SSL 失败多轮重试拖慢启动；无缓存的新环境保持联网可正常首次下载。注意环境变量必须在 huggingface_hub 导入前设置，故置于模块顶部 |
+| `Dockerfile` | ① `backend` 阶段新增 `ENV HF_ENDPOINT=https://hf-mirror.com`（国内网络直连 huggingface.co 不稳定，默认走镜像站，可用环境变量覆盖）；② `frontend` 阶段 healthcheck 由 `wget localhost` 改为 `wget 127.0.0.1`（alpine 容器中 localhost 先解析 IPv6 `::1` 被 nginx 拒绝，导致容器始终 unhealthy）；③ 依赖安装改为 `COPY backend/uv.lock` + `uv sync --frozen`（严格按锁文件安装，保证镜像内依赖与本地验证一致） |
+| `docker-compose.yml` | backend 新增 `hf_cache` 数据卷（`campuslink_hf_cache`）挂载 `/root/.cache/huggingface`：模型只需下载一次，容器重建后仍在，二次启动自动进入离线模式 |
+| `.env.example` | 补充 `NGINX_PORT`、`HF_ENDPOINT` 说明 |
 
 ### 核验检查
 
-（实施后填写）
+1. ✅ **本地单元验证**：升级后全新进程加载 Embedding 模型成功（512 维），ChromaDB 检索返回 3 条结果（此前必现 `client has been closed`）；
+2. ✅ **本地端到端**：uvicorn 启动日志无 SSL 重试记录（离线模式生效），`POST /api/chat` 返回真实 DeepSeek 回答；
+3. ✅ `uv lock` + `uv sync --frozen` 通过（锁文件与 pyproject 一致）；
+4. ✅ **容器级验收**（经 Nginx 8080 反代）：
+   | 测试项 | 结果 |
+   |--------|------|
+   | backend/frontend 容器状态 | ✅ 均 healthy |
+   | 空知识库提问兜底 | ✅ 返回"知识库中暂无内容，请先上传校园相关文档。" |
+   | 上传测试文档（经反代） | ✅ 解析入库成功（1 Chunk） |
+   | 提问触发完整 RAG + LLM | ✅ DeepSeek 准确引用测试文档内容（营业时间 6:30-21:30） |
+   | 删除测试文档 | ✅ 删除成功，知识库恢复为 0 |
+   | 模型加载 | ✅ 经 hf-mirror 30 秒完成，缓存落入 hf_cache 卷 |
+
+### 遗留说明
+
+- 宿主机 80 端口被系统服务占用，本机部署通过 `.env` 的 `NGINX_PORT=8080` 使用 8080 端口（`.env` 不入库，其他机器默认 80）；
+- 前端镜像的 `frontend-builder` 阶段每次重建会重新 `pnpm install`，后续可考虑 pnpm store 缓存挂载加速（P3）。
 
 ### 提交记录
 
-（实施后填写）
+- 分支：`main` → 推送至 `origin/main`（github.com/DreamWangRui/CampusLink-AI）
+- 涉及提交：见 `git log` 中「🐛 修复: huggingface_hub httpx 客户端 bug 导致 RAG 问答失败」
 
 ---

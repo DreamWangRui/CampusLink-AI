@@ -40,17 +40,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 安装 uv
 RUN pip install uv --no-cache-dir
 
-# 复制后端依赖文件
-COPY backend/pyproject.toml backend/.python-version ./
+# 复制后端依赖文件（uv.lock 一并复制，保证镜像内依赖与本地验证的一致）
+COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
 
-# 安装 Python 依赖
-RUN uv sync --no-dev
+# 安装 Python 依赖（--frozen 严格按 uv.lock 安装，禁止隐式重新解析）
+RUN uv sync --frozen --no-dev
 
 # 复制后端源码
 COPY backend/ ./
 
 # 创建数据目录（生产环境由 docker-compose 卷挂载覆盖）
 RUN mkdir -p /app/uploads /app/chroma_db
+
+# HuggingFace 镜像站默认值（国内网络直连 huggingface.co 不稳定），
+# 可通过运行时环境变量 HF_ENDPOINT 覆盖
+ENV HF_ENDPOINT=https://hf-mirror.com
 
 # 暴露端口
 EXPOSE 8000
@@ -74,6 +78,6 @@ COPY --from=frontend-builder /app/frontend/dist/ /usr/share/nginx/html
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO- http://localhost/healthz || exit 1
+    CMD wget -qO- http://127.0.0.1/healthz || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
