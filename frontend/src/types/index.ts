@@ -31,6 +31,13 @@ export interface LoginResponse {
   role: 'admin' | 'user'
 }
 
+/** 会话元信息 */
+export interface SessionMeta {
+  id: string
+  title: string
+  updatedAt: string
+}
+
 /** 聊天响应 */
 export interface ChatResponse {
   answer: string

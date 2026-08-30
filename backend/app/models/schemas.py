@@ -22,6 +22,11 @@ class ChatRequest(BaseModel):
         description="最近对话历史（用于追问改写与生成上下文），最多 10 条",
         max_length=10,
     )
+    session_id: str | None = Field(
+        default=None,
+        description="目标会话 ID（已登录多会话用；不传则自动新建会话）",
+        max_length=64,
+    )
 
 
 class SourceRef(BaseModel):

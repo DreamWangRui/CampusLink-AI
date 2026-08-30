@@ -45,6 +45,7 @@ def _get_conn() -> sqlite3.Connection:
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 identity TEXT NOT NULL,
+                session_id TEXT,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
                 sources_json TEXT NOT NULL DEFAULT '[]',
@@ -55,8 +56,129 @@ def _get_conn() -> sqlite3.Connection:
         _conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_identity ON chat_messages(identity, id)"
         )
+        # 会话表（多会话支持）；旧库补列的迁移放在 try 里兼容已有部署
+        _conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id TEXT PRIMARY KEY,
+                identity TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '新会话',
+                created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+            )
+            """
+        )
+        try:
+            _conn.execute("ALTER TABLE chat_messages ADD COLUMN session_id TEXT")
+        except sqlite3.OperationalError:
+            pass  # 列已存在
         _conn.commit()
     return _conn
+
+
+# ==================== 会话 ====================
+
+def create_session(identity: str, session_id: str, title: str = "新会话") -> dict:
+    """创建会话（id 由调用方生成，前端本地/服务端共用同一 id）"""
+    with _lock:
+        _get_conn().execute(
+            "INSERT OR IGNORE INTO chat_sessions (id, identity, title) VALUES (?, ?, ?)",
+            (session_id, identity, title),
+        )
+        _get_conn().commit()
+    return get_session(identity, session_id)
+
+
+def get_session(identity: str, session_id: str) -> dict | None:
+    """获取单个会话（校验归属）"""
+    with _lock:
+        row = _get_conn().execute(
+            "SELECT id, title, created_at, updated_at FROM chat_sessions WHERE id = ? AND identity = ?",
+            (session_id, identity),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def list_sessions(identity: str) -> list[dict]:
+    """
+    按最近更新倒序返回该用户的会话列表。
+    旧数据迁移：历史消息若无任何会话归属，自动归入「历史会话」。
+    """
+    conn = _get_conn()
+    with _lock:
+        # 一次性迁移：该身份存在无会话归属的旧消息，但没有可用会话
+        legacy = conn.execute(
+            "SELECT COUNT(*) AS n FROM chat_messages WHERE identity = ? AND session_id IS NULL",
+            (identity,),
+        ).fetchone()["n"]
+        has_sessions = conn.execute(
+            "SELECT COUNT(*) AS n FROM chat_sessions WHERE identity = ?", (identity,)
+        ).fetchone()["n"]
+        if legacy and not has_sessions:
+            conn.execute(
+                "INSERT INTO chat_sessions (id, identity, title) VALUES (?, ?, ?)",
+                (secrets.token_hex(16), identity, "历史会话"),
+            )
+            conn.execute(
+                "UPDATE chat_messages SET session_id = (SELECT id FROM chat_sessions WHERE identity = ? ORDER BY id LIMIT 1) "
+                "WHERE identity = ? AND session_id IS NULL",
+                (identity, identity),
+            )
+            conn.commit()
+
+        rows = conn.execute(
+            "SELECT id, title, created_at, updated_at FROM chat_sessions WHERE identity = ? ORDER BY updated_at DESC, id DESC",
+            (identity,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_session(identity: str, session_id: str) -> bool:
+    """删除会话及其全部消息"""
+    with _lock:
+        cur = _get_conn().execute(
+            "DELETE FROM chat_sessions WHERE id = ? AND identity = ?",
+            (session_id, identity),
+        )
+        _get_conn().execute(
+            "DELETE FROM chat_messages WHERE identity = ? AND session_id = ?",
+            (identity, session_id),
+        )
+        _get_conn().commit()
+    return cur.rowcount > 0
+
+
+def session_belongs_to(identity: str, session_id: str) -> bool:
+    return get_session(identity, session_id) is not None
+
+
+def get_session_messages(identity: str, session_id: str, limit: int = 200) -> list[dict]:
+    with _lock:
+        rows = _get_conn().execute(
+            "SELECT role, content, sources_json, created_at FROM chat_messages "
+            "WHERE identity = ? AND session_id = ? ORDER BY id DESC LIMIT ?",
+            (identity, session_id, limit),
+        ).fetchall()
+    return [
+        {
+            "role": r["role"],
+            "content": r["content"],
+            "sources": json.loads(r["sources_json"]),
+            "created_at": r["created_at"],
+        }
+        for r in reversed(rows)
+    ]
+
+
+def clear_session_messages(identity: str, session_id: str) -> int:
+    """清空会话内的消息（保留会话本身）"""
+    with _lock:
+        cur = _get_conn().execute(
+            "DELETE FROM chat_messages WHERE identity = ? AND session_id = ?",
+            (identity, session_id),
+        )
+        _get_conn().commit()
+    return cur.rowcount
 
 
 # ==================== 用户 ====================
@@ -122,14 +244,27 @@ def update_password(username: str, password: str) -> None:
 
 # ==================== 聊天记录 ====================
 
-def append_chat_message(identity: str, role: str, content: str, sources_json: str = "[]") -> None:
-    """追加一条聊天消息到该用户的云端历史"""
+def append_chat_message(identity: str, session_id: str, role: str, content: str, sources_json: str = "[]") -> None:
+    """
+    追加一条聊天消息到指定会话，并刷新会话更新时间。
+    会话标题仍为默认值时，首条用户消息自动成为标题（截取前 30 字）。
+    """
     with _lock:
-        _get_conn().execute(
-            "INSERT INTO chat_messages (identity, role, content, sources_json) VALUES (?, ?, ?, ?)",
-            (identity, role, content, sources_json),
+        conn = _get_conn()
+        conn.execute(
+            "INSERT INTO chat_messages (identity, session_id, role, content, sources_json) VALUES (?, ?, ?, ?, ?)",
+            (identity, session_id, role, content, sources_json),
         )
-        _get_conn().commit()
+        conn.execute(
+            "UPDATE chat_sessions SET updated_at = datetime('now', 'localtime') WHERE id = ? AND identity = ?",
+            (session_id, identity),
+        )
+        if role == "user":
+            conn.execute(
+                "UPDATE chat_sessions SET title = substr(?, 1, 30) WHERE id = ? AND identity = ? AND title = '新会话'",
+                (content, session_id, identity),
+            )
+        conn.commit()
 
 
 def get_chat_messages(identity: str, limit: int = 200) -> list[dict]:

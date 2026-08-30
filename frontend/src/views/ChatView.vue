@@ -6,7 +6,42 @@
   - 打字等待动画
 -->
 <template>
-  <div class="chat-container">
+  <div class="chat-shell">
+    <!-- 会话面板：多会话列表 -->
+    <aside class="sessions-panel">
+      <el-button
+        class="new-session-btn"
+        type="primary"
+        plain
+        :loading="chatStore.loading && !chatStore.activeId"
+        @click="chatStore.newSession()"
+      >
+        ＋ 新会话
+      </el-button>
+      <div class="sessions-list">
+        <div
+          v-for="s in chatStore.sessions"
+          :key="s.id"
+          class="session-item"
+          :class="{ active: s.id === chatStore.activeId }"
+          @click="chatStore.switchSession(s.id)"
+        >
+          <span class="session-title">{{ s.title }}</span>
+          <el-popconfirm
+            title="删除该会话及其全部消息？"
+            confirm-button-text="删除"
+            cancel-button-text="取消"
+            width="200"
+            @confirm="chatStore.removeSession(s.id)"
+          >
+            <template #reference>
+              <el-icon class="session-del" @click.stop><Delete /></el-icon>
+            </template>
+          </el-popconfirm>
+        </div>
+      </div>
+    </aside>
+    <div class="chat-container">
     <!-- 聊天消息展示区 -->
     <div class="chat-messages" ref="messagesContainer">
       <!-- 空状态：未开始聊天时显示欢迎信息 -->
@@ -120,6 +155,7 @@
       </div>
     </div>
   </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -225,10 +261,90 @@ watch(
 </script>
 
 <style scoped>
+/* ==================== 聊天页整体布局（会话面板 + 聊天区） ==================== */
+.chat-shell {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ==================== 会话面板 ==================== */
+.sessions-panel {
+  width: 220px;
+  flex-shrink: 0;
+  background: #fff;
+  border-right: 1px solid #e4e7ed;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.new-session-btn {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.sessions-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-bottom: 2px;
+}
+
+.session-item:hover {
+  background: #f5f7fa;
+}
+
+.session-item.active {
+  background: #ecf5ff;
+}
+
+.session-title {
+  flex: 1;
+  font-size: 13px;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-item.active .session-title {
+  color: #409eff;
+  font-weight: 600;
+}
+
+.session-del {
+  flex-shrink: 0;
+  color: #c0c4cc;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.session-item:hover .session-del {
+  opacity: 1;
+}
+
+.session-del:hover {
+  color: #f56c6c;
+}
+
 /* ==================== 聊天容器整体布局 ==================== */
 .chat-container {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
   height: 100%;
   background: #f5f7fa;
 }

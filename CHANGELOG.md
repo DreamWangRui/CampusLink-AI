@@ -4,6 +4,39 @@
 
 ---
 
+## [2026-08-30] 变更二十四：多会话支持（可开多个独立对话）
+
+> 用户需求："需要可以开启多个会话，现在只有一个"。聊天页新增会话面板：新建 / 切换 / 删除多个独立对话。
+
+### 设计
+
+- **登录用户**：会话存服务端（SQLite `chat_sessions` 表），按身份隔离，跨设备同步
+- **匿名用户**：会话存 localStorage（同 UI 本机可用）
+- 会话标题：默认"新会话"，首条用户提问自动成为标题（截取前 30 字）
+- 兼容迁移：变更二十之前/期间产生的无会话归属旧消息，首次拉取时自动归入"历史会话"
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `app/database/user_db.py` | 新增 `chat_sessions` 表与 `session_id` 列（旧库自动补列）；会话 CRUD（create/get/list/delete/belongs_to/messages/clear）；`append_chat_message` 增加 session_id 并刷新 updated_at + 自动标题；`list_sessions` 内置旧数据一次性迁移 |
+| `app/api/chat.py` | 新增 `GET/POST /api/chat/sessions`、`GET/DELETE /api/chat/sessions/{id}/messages`、`DELETE /api/chat/sessions/{id}`（全部需登录、按身份隔离校验归属）；流式端点支持 `session_id`（归属校验，未指定自动新建并在 meta 事件回传 ID）；`GET /api/chat/history` 保留为全量兼容 |
+| `app/models/schemas.py` | `ChatRequest.session_id` |
+| `frontend/src/store/chat.ts` | 重构为多会话模型：sessions/activeId/messages，登录=服务端模式、匿名=本地模式；`switchSession/newSession/removeSession`；流式 meta 采纳服务端新建会话；本地模式首条提问自动作标题 |
+| `frontend/src/views/ChatView.vue` | 左侧会话面板：＋新会话按钮、会话项（点击切换、悬停显示删除、删除带确认） |
+| `frontend/src/api/chat.ts` + `types` | 会话管理 API 与 SessionMeta 类型 |
+
+### 核验检查（pytest + vitest + 浏览器实测）
+
+| 测试项 | 结果 |
+|--------|------|
+| pytest：旧消息迁移历史会话 / 新建 / 跨用户隔离 404 / 删除连带消息 / 带会话流式持久化 + 自动标题 | ✅ **56 passed** |
+| vitest：多会话恢复/切换/截断/持久化/自动标题/清空/新建 | ✅ **23 passed**（重写适配多会话模型） |
+| 浏览器（匿名）：会话A 综测问答 → 新建会话B 图书馆问答 → 切换互不串扰 | ✅ 两会话内容独立（截图） |
+| ruff / `pnpm build`（vue-tsc） | ✅ 全绿 |
+
+---
+
 ## [2026-08-30] 变更二十三：知识库列表对普通用户只读开放
 
 > 用户反馈："管理员用户下有知识库文档，普通用户下没有"——原模型中文档列表/分类是管理员专属，普通用户登录后看到空列表。调整为：**列表/分类对任意登录用户只读开放，写操作仍仅管理员**。

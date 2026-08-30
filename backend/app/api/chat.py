@@ -5,6 +5,7 @@
 
 import json
 import logging
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -109,15 +110,33 @@ def chat_stream(http_request: Request, request: ChatRequest) -> StreamingRespons
     """
     question = request.question
     history = [item.model_dump() for item in request.history]
+    requested_session_id = request.session_id
 
     # 可选登录：带令牌则问答后持久化到云端历史；无效令牌直接 401
     identity_pair = _identity_from_request(http_request)
 
     def event_stream():
+        session_key: str | None = None  # 登录用户的会话键（role:identity:session_id）
+        session_id_out = requested_session_id
         try:
             context_chunks, relevant_docs, fallback, clean_history = prepare_rag(question, history)
             sources = _to_sources(relevant_docs)
-            yield f"data: {json.dumps({'type': 'meta', 'sources': [s.model_dump() for s in sources], 'fallback': fallback is not None}, ensure_ascii=False)}\n\n"
+
+            # 已登录：解析/创建会话（未指定 session_id 时自动新建，标题取自首条提问）
+            if identity_pair:
+                role, identity = identity_pair
+                storage_identity = f"{role}:{identity}"
+                try:
+                    if requested_session_id and user_db.session_belongs_to(storage_identity, requested_session_id):
+                        session_key = requested_session_id
+                    else:
+                        session_id_out = secrets.token_hex(16)
+                        user_db.create_session(storage_identity, session_id_out)
+                        session_key = session_id_out
+                except Exception:
+                    logger.exception("会话解析失败，本轮不入云端历史")
+
+            yield f"data: {json.dumps({'type': 'meta', 'sources': [s.model_dump() for s in sources], 'fallback': fallback is not None, 'session_id': session_id_out}, ensure_ascii=False)}\n\n"
 
             answer_parts: list[str] = []
             had_error = False
@@ -135,15 +154,16 @@ def chat_stream(http_request: Request, request: ChatRequest) -> StreamingRespons
 
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
-            # 已登录用户：问答完成后持久化到云端历史（出错的轮次不入库）
-            if identity_pair and not had_error and answer_parts:
+            # 已登录用户：问答完成后持久化到该会话（出错的轮次不入库）
+            if identity_pair and session_key and not had_error and answer_parts:
                 role, identity = identity_pair
+                storage_identity = f"{role}:{identity}"
                 try:
                     user_db.append_chat_message(
-                        f"{role}:{identity}", "user", question, "[]",
+                        storage_identity, session_key, "user", question, "[]",
                     )
                     user_db.append_chat_message(
-                        f"{role}:{identity}", "assistant", "".join(answer_parts),
+                        storage_identity, session_key, "assistant", "".join(answer_parts),
                         json.dumps([s.model_dump() for s in sources], ensure_ascii=False),
                     )
                 except Exception:
@@ -161,3 +181,55 @@ def chat_stream(http_request: Request, request: ChatRequest) -> StreamingRespons
             "Cache-Control": "no-cache",
         },
     )
+
+
+# ==================== 会话管理（需登录，按身份隔离） ====================
+
+@router.get("/chat/sessions", summary="获取当前用户的会话列表")
+def list_chat_sessions(identity_tuple: tuple[str, str] = Depends(require_user)) -> dict:
+    role, identity = identity_tuple
+    return {"sessions": user_db.list_sessions(f"{role}:{identity}")}
+
+
+@router.post("/chat/sessions", summary="新建会话")
+def create_chat_session(identity_tuple: tuple[str, str] = Depends(require_user)) -> dict:
+    role, identity = identity_tuple
+    session_id = secrets.token_hex(16)
+    session = user_db.create_session(f"{role}:{identity}", session_id)
+    return session
+
+
+@router.get("/chat/sessions/{session_id}/messages", summary="获取指定会话的聊天记录")
+def get_session_messages(
+    session_id: str,
+    identity_tuple: tuple[str, str] = Depends(require_user),
+) -> dict:
+    role, identity = identity_tuple
+    storage_identity = f"{role}:{identity}"
+    if not user_db.session_belongs_to(storage_identity, session_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return {"messages": user_db.get_session_messages(storage_identity, session_id)}
+
+
+@router.delete("/chat/sessions/{session_id}/messages", summary="清空指定会话的聊天记录")
+def clear_session_messages(
+    session_id: str,
+    identity_tuple: tuple[str, str] = Depends(require_user),
+) -> dict:
+    role, identity = identity_tuple
+    storage_identity = f"{role}:{identity}"
+    if not user_db.session_belongs_to(storage_identity, session_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return {"cleared": user_db.clear_session_messages(storage_identity, session_id)}
+
+
+@router.delete("/chat/sessions/{session_id}", summary="删除会话及其全部消息")
+def delete_chat_session(
+    session_id: str,
+    identity_tuple: tuple[str, str] = Depends(require_user),
+) -> dict:
+    role, identity = identity_tuple
+    deleted = user_db.delete_session(f"{role}:{identity}", session_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return {"deleted": True}

@@ -485,6 +485,89 @@ def test_change_password_admin_rejected():
     assert "ADMIN_PASSWORD" in r.json()["detail"]
 
 
+# ==================== 会话管理（多会话） ====================
+
+def test_sessions_legacy_migration_and_crud(monkeypatch):
+    """旧消息自动迁移进历史会话；新建/查询/删除会话全流程"""
+    _enable_real_auth()
+    client.post("/api/auth/register", json={"username": "会话用户", "password": "pass666"})
+    r = client.post("/api/auth/login", json={"username": "会话用户", "password": "pass666"})
+    headers = {"Authorization": f"Bearer {r.json()['token']}"}
+
+    # 造一条旧消息（session_id 为空，模拟历史数据）
+    from app.database import user_db
+    conn = user_db._get_conn()
+    conn.execute(
+        "INSERT INTO chat_messages (identity, role, content) VALUES (?, ?, ?)",
+        ("user:会话用户", "user", "旧消息内容"),
+    )
+    conn.commit()
+
+    # 首次拉会话列表：旧消息自动迁移进「历史会话」
+    r = client.get("/api/chat/sessions", headers=headers)
+    sessions = r.json()["sessions"]
+    assert len(sessions) == 1 and sessions[0]["title"] == "历史会话"
+    legacy_id = sessions[0]["id"]
+
+    r = client.get(f"/api/chat/sessions/{legacy_id}/messages", headers=headers)
+    msgs = r.json()["messages"]
+    assert any(m["content"] == "旧消息内容" for m in msgs)
+
+    # 新建会话
+    r = client.post("/api/chat/sessions", headers=headers)
+    new_session = r.json()
+    assert new_session["title"] == "新会话"
+
+    # 会话隔离：另一用户访问不到
+    client.post("/api/auth/register", json={"username": "别的用户", "password": "pass666"})
+    r = client.post("/api/auth/login", json={"username": "别的用户", "password": "pass666"})
+    other_headers = {"Authorization": f"Bearer {r.json()['token']}"}
+    r = client.get(f"/api/chat/sessions/{new_session['id']}/messages", headers=other_headers)
+    assert r.status_code == 404
+
+    # 删除会话（连同消息）
+    r = client.delete(f"/api/chat/sessions/{legacy_id}", headers=headers)
+    assert r.json()["deleted"] is True
+    r = client.get(f"/api/chat/sessions/{legacy_id}/messages", headers=headers)
+    assert r.status_code == 404
+
+
+def test_stream_persists_into_session_and_autotitle(monkeypatch):
+    """带 session_id 的流式问答写入该会话；首条提问自动成为标题"""
+    _enable_real_auth()
+    client.post("/api/auth/register", json={"username": "流式用户", "password": "pass666"})
+    r = client.post("/api/auth/login", json={"username": "流式用户", "password": "pass666"})
+    headers = {"Authorization": f"Bearer {r.json()['token']}"}
+
+    # 新建会话
+    session = client.post("/api/chat/sessions", headers=headers).json()
+
+    monkeypatch.setattr(
+        "app.api.chat.prepare_rag",
+        lambda question, history=None: (["片段"], [], None, []),
+    )
+    monkeypatch.setattr(
+        "app.api.chat.generate_answer_stream",
+        lambda question, chunks, history=None: iter(["会话内回答"]),
+    )
+    r = client.post(
+        "/api/chat/stream",
+        json={"question": "帮我查 scholarship 的事", "session_id": session["id"]},
+        headers=headers,
+    )
+    assert r.status_code == 200
+
+    # 标题自动更新为首条提问
+    sessions = client.get("/api/chat/sessions", headers=headers).json()["sessions"]
+    target = [s for s in sessions if s["id"] == session["id"]][0]
+    assert target["title"].startswith("帮我查")
+
+    # 会话内消息持久化
+    msgs = client.get(f"/api/chat/sessions/{session['id']}/messages", headers=headers).json()["messages"]
+    assert [m["role"] for m in msgs] == ["user", "assistant"]
+    assert msgs[1]["content"] == "会话内回答"
+
+
 # ==================== 健康检查 ====================
 
 def test_health_endpoint(monkeypatch):
