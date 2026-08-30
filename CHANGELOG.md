@@ -4,6 +4,45 @@
 
 ---
 
+## [2026-08-30] 变更十八：知识库管理面鉴权（管理员密钥）
+
+> 用户确认的需求：不能任何人都能操作知识库内容。方案：管理员密钥（`ADMIN_KEY` 环境变量），不做完整用户系统（V3 再议）。
+
+### 权限模型
+
+| 接口 | 权限 |
+|------|------|
+| `/api/chat`、`/api/chat/stream`、`/api/health` | 🔓 公开（校园助手人人可问） |
+| `/api/document/*`（上传/异步上传/状态）、`/api/knowledge/*`（列表/分类/移动/删除） | 🔐 请求头 `X-Admin-Key` 必须匹配 `ADMIN_KEY` |
+
+`ADMIN_KEY` 未配置时管理接口放行（开发模式），启动日志醒目告警；生产在 `.env` 配置即生效。
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `app/config.py` | 新增 `ADMIN_KEY` 环境变量 |
+| `app/api/auth.py`（新增） | `require_admin` FastAPI 依赖：`secrets.compare_digest` 防时序攻击，失败 401 + 启动告警 |
+| `app/api/document.py`、`app/api/knowledge.py` | 路由级 `dependencies=[Depends(require_admin)]` 一次性保护全部管理端点 |
+| `app/main.py` | 启动日志输出鉴权启用/未配置告警 |
+| `frontend/src/api/index.ts` | 请求拦截器：管理面路径自动附带 `X-Admin-Key`（登录后存 localStorage） |
+| `frontend/src/store/knowledge.ts` | `needsAuth` 状态（401 置位）+ `setAdminKey()`（保存并重试加载） |
+| `frontend/src/views/KnowledgeView.vue` | 管理员验证弹窗（401 自动弹出 + "管理员"按钮手动打开，`close-on-click-modal=false` 防误关）；验证通过后橙色警示恢复 |
+| `.env`（本地，不入库）/`.env.example`/`docker-compose.yml`/`README.md` | 密钥配置与接口权限表同步 |
+
+### 核验检查（API + 单测 + 浏览器实测）
+
+| 测试项 | 结果 |
+|--------|------|
+| 无密钥访问管理接口（容器经 Nginx） | ✅ 401；启动日志"管理员密钥已启用" |
+| 错误密钥（UI 弹窗输入） | ✅ 拒绝，列表仍空，弹窗保持 |
+| 正确密钥（UI 弹窗输入） | ✅ "管理员验证通过"提示，文档列表加载，警示按钮恢复 |
+| 聊天问答保持公开（启用鉴权后） | ✅ 非公开路径不受影响 |
+| pytest 新增 6 例（无密钥/错密钥/对密钥/上传 401/聊天公开/未配置放行） | ✅ 45 passed |
+| vitest 新增 2 例（401 置位 / setAdminKey 恢复） | ✅ 13 passed |
+
+---
+
 ## [2026-08-30] 变更十七：聊天记录刷新持久化 + 修复流式渲染失效
 
 > 用户反馈：刷新页面聊天记录全部丢失。排查中揪出一个连带 bug：流式回答的"逐字渲染"实际从未生效。

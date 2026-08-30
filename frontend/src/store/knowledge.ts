@@ -37,6 +37,23 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
   const taskDone = ref(0)
   const taskTotal = ref(0)
 
+  /** 管理面鉴权失败（401），需要输入管理员密钥 */
+  const needsAuth = ref(false)
+
+  /** 识别管理接口的 401 鉴权失败 */
+  function markAuthError(error: any): void {
+    if (error?.response?.status === 401) {
+      needsAuth.value = true
+    }
+  }
+
+  /** 保存管理员密钥并重试加载（密钥错误会再次置位 needsAuth） */
+  async function setAdminKey(key: string): Promise<void> {
+    localStorage.setItem('campuslink_admin_key', key)
+    needsAuth.value = false
+    await Promise.all([loadDocuments(), loadFolders()])
+  }
+
   // ==================== 操作 ====================
 
   /**
@@ -49,7 +66,8 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
       const response = await getKnowledgeList(folder)
       documents.value = response.documents
       total.value = response.total
-    } catch (error) {
+    } catch (error: any) {
+      markAuthError(error)
       console.error('加载文档列表失败:', error)
     } finally {
       loading.value = false
@@ -113,6 +131,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
       await loadFolders()
       return status.message || '上传完成'
     } catch (error: any) {
+      markAuthError(error)
       const msg = error?.response?.data?.detail || error.message || '上传失败'
       throw new Error(msg)
     } finally {
@@ -136,6 +155,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
       }
       return response.message
     } catch (error: any) {
+      markAuthError(error)
       const msg = error?.response?.data?.detail || error.message || '删除失败'
       throw new Error(msg)
     }
@@ -158,6 +178,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
       }
       return response.message
     } catch (error: any) {
+      markAuthError(error)
       const msg = error?.response?.data?.detail || error.message || '移动失败'
       throw new Error(msg)
     }
@@ -167,7 +188,9 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     documents, total, loading, uploading,
     folders, selectedFolder,
     taskFiles, taskDone, taskTotal,
+    needsAuth,
     loadDocuments, loadFolders, setFolderFilter,
+    setAdminKey,
     upload, removeDocument, moveDocument,
   }
 })

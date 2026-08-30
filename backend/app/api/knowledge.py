@@ -5,8 +5,9 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.api.auth import require_admin
 from app.config import UPLOAD_DIR
 from app.database.chroma_client import (
     delete_document,
@@ -27,7 +28,8 @@ from app.models.schemas import (
 logger = logging.getLogger(__name__)
 
 # 创建知识库路由
-router = APIRouter(prefix="/api/knowledge", tags=["知识库管理"])
+# 管理面鉴权：全部知识库接口要求管理员密钥（X-Admin-Key）
+router = APIRouter(prefix="/api/knowledge", tags=["知识库管理"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/list", response_model=KnowledgeListResponse, summary="获取知识库文档列表（支持按文件夹筛选）")

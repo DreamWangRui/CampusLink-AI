@@ -246,6 +246,53 @@ def test_chat_stream_fallback_single_delta(monkeypatch):
     assert len(deltas) == 1 and deltas[0]["content"] == "这是兜底话术"
 
 
+# ==================== 管理面鉴权 ====================
+
+def test_admin_endpoints_require_key(monkeypatch):
+    """配置了 ADMIN_KEY 后，管理接口无密钥访问返回 401"""
+    monkeypatch.setattr("app.config.ADMIN_KEY", "test-key")
+    r = client.get("/api/knowledge/list")
+    assert r.status_code == 401
+
+
+def test_admin_wrong_key_rejected(monkeypatch):
+    monkeypatch.setattr("app.config.ADMIN_KEY", "test-key")
+    r = client.get("/api/knowledge/list", headers={"X-Admin-Key": "wrong-key"})
+    assert r.status_code == 401
+
+
+def test_admin_correct_key_allows(monkeypatch):
+    monkeypatch.setattr("app.config.ADMIN_KEY", "test-key")
+    monkeypatch.setattr("app.api.knowledge.get_all_documents", lambda folder=None: [])
+    r = client.get("/api/knowledge/list", headers={"X-Admin-Key": "test-key"})
+    assert r.status_code == 200
+
+
+def test_upload_requires_key(monkeypatch):
+    monkeypatch.setattr("app.config.ADMIN_KEY", "test-key")
+    r = client.post(
+        "/api/document/upload",
+        files=[("files", ("a.txt", "内容", "text/plain"))],
+    )
+    assert r.status_code == 401
+
+
+def test_chat_stays_public_with_auth_enabled(monkeypatch):
+    """聊天问答保持公开：启用鉴权后无密钥仍可提问"""
+    monkeypatch.setattr("app.config.ADMIN_KEY", "test-key")
+    monkeypatch.setattr("app.api.chat.rag_query", lambda question, history=None: ("ok", []))
+    r = client.post("/api/chat", json={"question": "问题"})
+    assert r.status_code == 200
+
+
+def test_admin_key_unset_allows_anonymous(monkeypatch):
+    """开发模式：未配置 ADMIN_KEY 时管理接口放行"""
+    monkeypatch.setattr("app.config.ADMIN_KEY", "")
+    monkeypatch.setattr("app.api.knowledge.get_all_documents", lambda folder=None: [])
+    r = client.get("/api/knowledge/list")
+    assert r.status_code == 200
+
+
 # ==================== 健康检查 ====================
 
 def test_health_endpoint(monkeypatch):

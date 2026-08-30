@@ -14,8 +14,9 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 
+from app.api.auth import require_admin
 from app.config import MAX_FILE_SIZE, SUPPORTED_EXTENSIONS, UPLOAD_DIR
 from app.database.chroma_client import add_documents, find_by_file_hash
 from app.models.schemas import BatchUploadFileResult, BatchUploadResponse
@@ -25,7 +26,8 @@ from app.services.splitter_service import split_text
 logger = logging.getLogger(__name__)
 
 # 创建文档路由
-router = APIRouter(prefix="/api/document", tags=["文档管理"])
+# 管理面鉴权：全部文档接口要求管理员密钥（X-Admin-Key）
+router = APIRouter(prefix="/api/document", tags=["文档管理"], dependencies=[Depends(require_admin)])
 
 # ==================== 异步上传任务表 ====================
 # 内存任务表：单 worker 部署下可用；服务重启后任务记录丢失（文档入库不受影响）

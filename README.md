@@ -85,6 +85,12 @@ cd CampusLinkAI
 DEEPSEEK_API_KEY=your_actual_api_key
 ```
 
+同时建议配置管理员密钥（知识库管理操作需要，聊天问答不受影响；不配置则管理接口允许匿名访问）：
+
+```env
+ADMIN_KEY=your_admin_key
+```
+
 > 获取 API Key: [https://platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys)
 
 ### 3. 启动服务
@@ -170,12 +176,16 @@ docker run --rm -v campuslink_chroma_data:/data -v "$(pwd)/backups":/backup alpi
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `POST` | `/api/chat` | 发送问题，获取 AI 回答 |
-| `POST` | `/api/document/upload` | 批量上传文档并导入知识库（支持文件夹分类） |
-| `GET` | `/api/knowledge/list` | 获取知识库文档列表 |
-| `GET` | `/api/knowledge/folders` | 获取所有文件夹/分类列表 |
-| `PUT` | `/api/knowledge/move` | 移动文档到其他文件夹（新名称自动创建） |
-| `DELETE` | `/api/knowledge/delete` | 删除指定文档 |
+| `POST` | `/api/chat/stream` | 流式问答（SSE） |
+| `POST` | `/api/document/upload` | 批量上传文档并导入知识库（支持文件夹分类）🔒 |
+| `POST` | `/api/document/upload-async` | 异步批量上传，返回任务 ID 🔒 |
+| `GET` | `/api/knowledge/list` | 获取知识库文档列表 🔒 |
+| `GET` | `/api/knowledge/folders` | 获取所有文件夹/分类列表 🔒 |
+| `PUT` | `/api/knowledge/move` | 移动文档到其他文件夹（新名称自动创建）🔒 |
+| `DELETE` | `/api/knowledge/delete` | 删除指定文档 🔒 |
 | `GET` | `/api/health` | 健康检查 |
+
+> 🔒 = 需要管理员密钥：请求头 `X-Admin-Key` 与 `.env` 中的 `ADMIN_KEY` 匹配；聊天问答保持公开。
 
 ### 示例
 

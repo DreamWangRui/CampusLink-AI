@@ -114,9 +114,19 @@
     <div class="document-section">
       <div class="section-header">
         <h3>已导入文档（{{ knowledgeStore.total }}）</h3>
-        <el-button :icon="Refresh" size="small" @click="refreshAll">
-          刷新
-        </el-button>
+        <div class="header-actions">
+          <el-button
+            size="small"
+            :type="knowledgeStore.needsAuth ? 'warning' : 'default'"
+            :icon="Lock"
+            @click="authDialogVisible = true"
+          >
+            {{ knowledgeStore.needsAuth ? '管理员验证' : '管理员' }}
+          </el-button>
+          <el-button :icon="Refresh" size="small" @click="refreshAll">
+            刷新
+          </el-button>
+        </div>
       </div>
 
       <!-- 文件夹筛选栏 -->
@@ -199,6 +209,7 @@
       v-model="moveDialogVisible"
       :title="`移动文档：${moveTargetDoc?.filename ?? ''}`"
       width="440px"
+      :close-on-click-modal="false"
     >
       <div class="move-form-row">
         <span class="move-label">目标分类：</span>
@@ -227,11 +238,36 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 管理员验证弹窗 -->
+    <el-dialog
+      v-model="authDialogVisible"
+      title="管理员验证"
+      width="400px"
+      :close-on-click-modal="false"
+    >
+      <p class="auth-hint">
+        知识库管理操作需要管理员密钥。验证一次后本浏览器会记住（可随时在此处更换）。
+      </p>
+      <el-input
+        v-model="adminKeyInput"
+        type="password"
+        placeholder="输入管理员密钥（ADMIN_KEY）"
+        show-password
+        @keyup.enter="handleAuthSave"
+      />
+      <template #footer>
+        <el-button @click="authDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="knowledgeStore.loading" @click="handleAuthSave">
+          验证并加载
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 // 显式使用的 ElMessage 需手动补样式（unplugin 只处理模板中的组件）
 import 'element-plus/es/components/message/style/css'
@@ -241,6 +277,7 @@ import {
   Close,
   Delete,
   Document,
+  Lock,
   Position,
   Refresh,
   UploadFilled,
@@ -361,6 +398,34 @@ async function handleMove() {
 function refreshAll() {
   knowledgeStore.loadDocuments()
   knowledgeStore.loadFolders()
+}
+
+// ==================== 管理员验证 ====================
+const authDialogVisible = ref(false)
+const adminKeyInput = ref('')
+
+// 鉴权失败（401）时自动弹出验证弹窗
+watch(
+  () => knowledgeStore.needsAuth,
+  (needs) => {
+    if (needs) authDialogVisible.value = true
+  },
+)
+
+/** 保存管理员密钥并重试加载；密钥错误时弹窗保持打开 */
+async function handleAuthSave() {
+  const key = adminKeyInput.value.trim()
+  if (!key) {
+    ElMessage.warning('请输入管理员密钥')
+    return
+  }
+  try {
+    await knowledgeStore.setAdminKey(key)
+    authDialogVisible.value = false
+    ElMessage.success('管理员验证通过')
+  } catch {
+    ElMessage.error('密钥错误或加载失败，请重试')
+  }
 }
 
 // ==================== 页面加载 ====================
@@ -622,6 +687,20 @@ onMounted(() => {
   margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid #ebeef5;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ==================== 管理员验证弹窗 ==================== */
+.auth-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.6;
 }
 
 .section-header h3 {

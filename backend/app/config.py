@@ -50,6 +50,12 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "your_api_key_here")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 MODEL_NAME = os.getenv("MODEL_NAME", "deepseek-chat")
 
+# ==================== 管理员密钥（知识库管理面鉴权） ====================
+# 上传/删除/移动/列表等管理操作要求请求头 X-Admin-Key 与之匹配；
+# 聊天问答保持公开。未配置时管理接口放行（开发模式），启动日志会醒目告警，
+# 生产环境务必在 .env 中设置。
+ADMIN_KEY = os.getenv("ADMIN_KEY", "")
+
 # ==================== Embedding 模型配置 ====================
 # 使用 BAAI/bge-small-zh-v1.5，中文效果优秀，本地运行，资源占用低
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-zh-v1.5"

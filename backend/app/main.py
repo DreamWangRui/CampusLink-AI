@@ -37,6 +37,16 @@ async def lifespan(app: FastAPI):
 
     logger.info("CampusLink AI 后端服务已启动：API 文档 http://localhost:8000/docs")
 
+    # 管理面鉴权状态告警
+    from app import config as app_config
+    if app_config.ADMIN_KEY:
+        logger.info("管理员密钥已启用：知识库管理接口需要 X-Admin-Key 请求头")
+    else:
+        logger.warning(
+            "!! ADMIN_KEY 未配置：知识库管理接口（上传/删除/移动/列表）允许匿名访问（开发模式）。"
+            "生产环境请在 .env 中设置 ADMIN_KEY !!"
+        )
+
     yield  # 应用运行期间
 
     # 关闭阶段
