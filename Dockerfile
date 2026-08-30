@@ -52,6 +52,10 @@ COPY backend/ ./
 # 创建数据目录（生产环境由 docker-compose 卷挂载覆盖）
 RUN mkdir -p /app/uploads /app/chroma_db
 
+# 数据目录基准：容器内代码在 /app/app/config.py，向上推导会错误得到 /，
+# 显式指定为 /app 使 chroma_db / uploads 落在挂载卷上（持久化）
+ENV APP_BASE_DIR=/app
+
 # HuggingFace 镜像站默认值（国内网络直连 huggingface.co 不稳定），
 # 可通过运行时环境变量 HF_ENDPOINT 覆盖
 ENV HF_ENDPOINT=https://hf-mirror.com

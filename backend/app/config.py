@@ -11,7 +11,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # 项目根目录（backend 的上一级）
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+# 本地开发：backend/app/config.py 向上三级 = 项目根目录
+# Docker 容器：代码位于 /app/app/config.py，向上三级会错误地推到 /，
+# 导致数据写入容器可写层（重建即丢失、挂载卷空转），因此支持
+# 通过 APP_BASE_DIR 环境变量显式指定（Dockerfile 中设为 /app）
+BASE_DIR = Path(os.getenv("APP_BASE_DIR", str(Path(__file__).resolve().parent.parent.parent)))
 
 # 加载 .env 文件中的环境变量
 env_path = BASE_DIR / ".env"

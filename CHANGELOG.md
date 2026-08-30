@@ -4,6 +4,73 @@
 
 ---
 
+## [2026-08-30] 变更八：修复容器内数据路径错误 —— 知识库每次重建容器即丢失（P0）
+
+> **重要更正**：变更六中记录的"引擎崩溃导致卷数据回滚"归因有误。真实原因是在本次排查中确认的项目初始路径 bug（见下），引擎崩溃只是时间上的巧合。两次"知识库丢失"（变更五后、变更七后）均为同一 bug 所致。
+
+### 根因
+
+`app/config.py` 中 `BASE_DIR = Path(__file__).resolve().parent.parent.parent`：
+- 本地开发：`backend/app/config.py` 向上三级 = 项目根目录 ✅
+- Docker 容器：代码位于 `/app/app/config.py`，向上三级 = **`/`**（根目录）❌
+
+于是容器内 `CHROMA_DB_DIR=/chroma_db`、`UPLOAD_DIR=/uploads`——数据全部写在**容器可写层**，而 `docker-compose.yml` 挂载的 `campuslink_chroma_data`（/app/chroma_db）与 `campuslink_upload_data`（/app/uploads）两个卷**从头到尾空转**。每次 `docker compose up -d` 重建容器，可写层丢弃，知识库即"消失"。
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `app/config.py` | `BASE_DIR` 支持环境变量 `APP_BASE_DIR` 覆盖（默认保持本地推导逻辑不变） |
+| `Dockerfile` | backend 阶段新增 `ENV APP_BASE_DIR=/app`，使 chroma_db / uploads 落在挂载卷上 |
+
+### 核验检查
+
+| 测试项 | 结果 |
+|--------|------|
+| 容器内路径确认 | ✅ `BASE_DIR=/app`，`CHROMA_DB_DIR=/app/chroma_db`（卷挂载点） |
+| 上传文档（12 chunks）+ 移动分类 | ✅ 成功 |
+| **`docker compose up -d --force-recreate`（原丢数据场景）** | ✅ **数据存活，health 返回 knowledge_base_docs: 12** |
+| 迁入《评奖评优》文档并归入"奖助学金"分类 | ✅ |
+
+### 遗留影响
+
+- 《综合素质测评》文档因该 bug 在历次容器重建中丢失（源文件在用户手上），**需重新上传**；《评奖评优》已重新迁入并移入"奖助学金"分类；
+- 该 bug 同时解释了为什么 `/app/.env` 未被加载（compose 通过 environment 注入变量，未受影响）。
+
+---
+
+## [2026-08-30] 变更七：文档移动 + 分类随移动自动创建
+
+> 来源：用户实测反馈——无法自己新建文件夹，只有"未分类"。根因：分类（文件夹）是文档元数据的派生值，只能在上传时指定且 UI 提示不可发现（el-select 的 allow-create 能力用户完全无感知），上传后更无法重新归类。
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `app/models/schemas.py` | 新增 `MoveDocumentRequest`（doc_id + folder，folder 上限 50 字符）/ `MoveDocumentResponse` |
+| `app/database/chroma_client.py` | 新增 `move_document(doc_id, folder)`：按 doc_id 取全部 Chunk，用**完整合并后的 metadata** 调 `collection.update`（不依赖部分合并语义），返回移动数量 |
+| `app/api/knowledge.py` | 新增 `PUT /api/knowledge/move`：folder 去空白、留空归未分类；目标分类不存在即随移动创建（派生值设计：首个文档进入即视为创建，与现有 folder 派生逻辑一致） |
+| `frontend/src/types/index.ts` + `api/knowledge.ts` + `store/knowledge.ts` | 移动类型定义、`moveKnowledgeDocument` API、store `moveDocument` action（成功后刷新列表与分类计数） |
+| `frontend/src/views/KnowledgeView.vue` | ① 文档列表每行新增"移动"按钮 + 移动弹窗（el-select 可选已有分类、可**直接输入新分类名**，预填当前分类）；② 上传面板分类提示改为"可选择已有分类或直接输入新分类名（自动创建）" |
+| `README.md` | API 表补充 `/api/knowledge/folders` 与 `/api/knowledge/move` |
+
+### 设计说明
+
+分类（文件夹）在 ChromaDB 中是文档 chunk 的 folder 元数据派生值，没有独立实体——因此**空分类无法单独存在**，分类随首个文档移入/上传自动创建。如需独立的分类实体（支持空分类、重命名、排序），需要引入元数据索引存储（对应优化清单 #11 的 SQLite 方案），列入后续路线图。
+
+### 核验检查（本地全量 + 容器复验）
+
+| 测试项 | 结果 |
+|--------|------|
+| 移动到新分类"奖助学金"（输入新名称=创建） | ✅ 12 个 Chunk 移动成功，folders 列表自动出现 `(奖助学金, 1)` |
+| 移动后文档 folder 字段更新 | ✅ 列表接口返回新分类 |
+| 移动后检索不受影响（embedding 未变） | ✅ "奖学金金额"命中 distance 0.54 |
+| 移回未分类（folder 留空） | ✅ |
+| 移动不存在的文档 | ✅ 正确返回"不存在 / success: false"，不误报 |
+| `pnpm build`（含 vue-tsc） | ✅ 通过 |
+
+---
+
 ## [2026-08-30] 变更六：元问题自我介绍 + 兜底话术主题导航
 
 > 来源：用户实测反馈——问"你可以回答哪些问题"时掉进检索兜底，只得到冷冰冰的"请咨询学校相关部门"。元问题（询问助手自身能力）本就无法通过知识库检索回答，不应落入兜底；而真正超纲问题的兜底话术也应引导用户而非一刀切拒绝。
@@ -26,13 +93,9 @@
 | "你好，综合素质测评怎么算分"（容器反例） | **不**触发元问题，正常检索流程 | ✅ 正确走检索（因综测文档缺失返回带导航兜底，行为符合预期） |
 | "今天天气怎么样"（超纲） | 兜底 + 主题导航 | ✅ 带知识库收录清单的兜底话术 |
 
-### ⚠️ 事故记录：Docker 引擎崩溃导致卷数据丢失（非本变更引入）
+### ⚠️ 事故记录：容器知识库数据丢失（当时误归因于引擎崩溃，真实根因见变更八）
 
-变更五构建期间 Docker Desktop 引擎崩溃（`_ping` 返回 500，构建挂起 30 分钟），经「杀进程 + `wsl --shutdown` + 重启」恢复后发现：`campuslink_chroma_data` / `campuslink_upload_data` 卷仍然存在（创建时间不变）但**内容被回滚清空**，此前迁入容器知识库的 2 份文档（27 chunks）丢失。
-
-- 处置：《评奖评优》源文件仍在本地 `uploads/`，已重新上传恢复（12 chunks）；《综合素质测评》为用户从本机上传，容器内副本丢失，**需用户在页面上重新上传一次**；
-- 根因：引擎非正常终止（taskkill + wsl --shutdown）导致 WSL 虚拟磁盘卷数据回滚，属环境事故；
-- 后续改进方向：知识库数据的可重建性依赖用户手里的原始文档，若需更强的持久化保障，可增加定期备份卷到宿主机目录的脚本（列入优化清单 P3）。
+变更五构建期间 Docker Desktop 引擎崩溃（`_ping` 返回 500，构建挂起 30 分钟），恢复后发现容器知识库数据丢失，当时归因于"引擎非正常终止导致卷数据回滚"。**后续排查（见变更八）确认真实根因是容器内数据路径 bug**：数据从未写入挂载卷，每次重建容器必然丢失，与引擎崩溃无关。《评奖评优》源文件仍在本地 `uploads/`，已重新迁入；《综合素质测评》需用户重新上传。
 
 ---
 
