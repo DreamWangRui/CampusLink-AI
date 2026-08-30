@@ -1,6 +1,10 @@
 # ============================================================
 # CampusLink AI - Docker 多阶段构建
-# 前端构建 → 后端环境 → 统一运行
+# 阶段 1 frontend-builder: 构建 Vue3 前端静态产物
+# 阶段 2 backend:         FastAPI 后端运行环境（target: backend）
+# 阶段 3 frontend:        Nginx 托管前端 + 反代 /api（target: frontend）
+#
+# docker-compose.yml 通过 build.target 选取 backend / frontend 两个目标
 # ============================================================
 
 # ==================== 阶段 1: 前端构建 ====================
@@ -20,15 +24,15 @@ RUN pnpm install --frozen-lockfile
 # 复制前端源码
 COPY frontend/ ./
 
-# 构建前端静态文件
+# 构建前端静态文件（产物在 /app/frontend/dist）
 RUN pnpm run build
 
 # ==================== 阶段 2: 后端运行环境 ====================
-FROM python:3.11-slim
+FROM python:3.11-slim AS backend
 
 WORKDIR /app
 
-# 安装系统依赖
+# 安装系统依赖（curl 用于健康检查）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -45,13 +49,8 @@ RUN uv sync --no-dev
 # 复制后端源码
 COPY backend/ ./
 
-# 复制前端构建产物（从阶段1）
-COPY --from=frontend-builder /app/frontend/dist/ ./frontend/dist/
-
-# 创建数据目录
+# 创建数据目录（生产环境由 docker-compose 卷挂载覆盖）
 RUN mkdir -p /app/uploads /app/chroma_db
-
-# 复制环境变量文件（如果不存在则跳过，Docker Compose 会通过 environment 注入）
 
 # 暴露端口
 EXPOSE 8000
@@ -62,3 +61,19 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 
 # 启动 FastAPI 服务
 CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# ==================== 阶段 3: Nginx 前端服务 ====================
+FROM nginx:1.27-alpine AS frontend
+
+# 复制自定义 Nginx 配置（托管 dist + 反代 /api）
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+
+# 复制前端构建产物（来自阶段 1）
+COPY --from=frontend-builder /app/frontend/dist/ /usr/share/nginx/html
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- http://localhost/healthz || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

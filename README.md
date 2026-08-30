@@ -129,21 +129,28 @@ pnpm dev
 ## 🐳 Docker 部署
 
 ```bash
-# 配置环境变量
-cp .env .docker.env
-# 编辑 .docker.env，填入真实的 API Key
+# 1. 配置环境变量（Compose 会自动读取根目录 .env）
+#    编辑 .env，填入真实的 API Key
+#    （可选）在 .env 中添加 NGINX_PORT=8080 修改前端访问端口
 
-# 构建并启动
+# 2. 构建并启动
 docker compose up -d
 
-# 查看日志
+# 3. 查看日志
 docker compose logs -f
 
-# 停止
+# 4. 停止
 docker compose down
 ```
 
-服务运行在 `http://localhost:8000`。
+### 容器架构
+
+| 服务 | 说明 | 访问地址 |
+|------|------|----------|
+| **frontend** (Nginx) | 托管前端静态文件 + 反向代理 `/api` | `http://localhost`（主入口） |
+| **backend** (FastAPI) | RAG 问答后端 | `http://localhost:8000`（调试用，Swagger 文档） |
+
+浏览器访问 `http://localhost` 即可使用完整应用（UI 与 API 同源，无需跨域）；后端 8000 端口保留用于直接调试 API，如不需要可删除 `docker-compose.yml` 中 backend 的 `ports` 配置。
 
 ## 📡 API 接口
 
