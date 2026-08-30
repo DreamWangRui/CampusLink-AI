@@ -3,14 +3,18 @@ FastAPI 应用入口
 创建并配置 FastAPI 应用，注册路由，配置 CORS 中间件
 """
 
+import logging
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.chat import router as chat_router
 from app.api.document import router as document_router
 from app.api.knowledge import router as knowledge_router
+
+logger = logging.getLogger(__name__)
 
 
 # ==================== 应用生命周期管理 ====================
@@ -21,29 +25,22 @@ async def lifespan(app: FastAPI):
     FastAPI 应用生命周期管理
     在应用启动时加载 Embedding 模型，关闭时清理资源
     """
-    # 启动阶段：预加载 Embedding 模型
-    print("=" * 50)
-    print("CampusLink AI 后端服务启动中...")
-    print("=" * 50)
-    # 预加载 embedding 模型（避免首次请求时等待）
+    # 启动阶段：预加载 Embedding 模型（避免首次请求时等待）
+    logger.info("=" * 20 + " CampusLink AI 后端服务启动中 " + "=" * 20)
     try:
         from app.services.embedding_service import get_embedding_model
+        t0 = time.time()
         get_embedding_model()
-        print("[OK] Embedding 模型加载完成")
+        logger.info("Embedding 模型加载完成（%.1fs）", time.time() - t0)
     except Exception as e:
-        print(f"[ERROR] Embedding 模型加载失败: {e}")
-        print("请确保网络连接正常，模型将在首次使用时自动下载")
+        logger.error("Embedding 模型加载失败: %s（将尝试在首次使用时下载）", e)
 
-    print("[OK] ChromaDB 持久化目录已就绪")
-    print("=" * 50)
-    print("CampusLink AI 后端服务已启动！")
-    print("API 文档: http://localhost:8000/docs")
-    print("=" * 50)
+    logger.info("CampusLink AI 后端服务已启动：API 文档 http://localhost:8000/docs")
 
     yield  # 应用运行期间
 
-    # 关闭阶段：清理资源
-    print("CampusLink AI 后端服务正在关闭...")
+    # 关闭阶段
+    logger.info("CampusLink AI 后端服务正在关闭")
 
 
 # ==================== 创建 FastAPI 应用 ====================
@@ -69,10 +66,24 @@ app.add_middleware(
     allow_headers=["*"],  # 允许所有请求头
 )
 
+
+# ==================== 请求耗时日志中间件 ====================
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration_ms = (time.time() - start) * 1000
+    # 健康检查与轮询请求噪音较大，仅记录耗时超过 1s 的或非轮询请求
+    path = request.url.path
+    if "/status/" not in path and path != "/api/health":
+        logger.info("%s %s -> %d (%.0fms)", request.method, path, response.status_code, duration_ms)
+    return response
+
+
 # ==================== 注册路由 ====================
-app.include_router(chat_router)        # 聊天接口: POST /api/chat
-app.include_router(document_router)     # 文档上传接口: POST /api/document/upload
-app.include_router(knowledge_router)    # 知识库管理接口: GET /api/knowledge/list, DELETE /api/knowledge/delete
+app.include_router(chat_router)        # 聊天接口: POST /api/chat, /api/chat/stream
+app.include_router(document_router)    # 文档上传接口
+app.include_router(knowledge_router)   # 知识库管理接口
 
 
 # ==================== 健康检查接口 ====================

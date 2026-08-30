@@ -7,6 +7,7 @@
 """
 
 import hashlib
+import logging
 import threading
 import time
 import uuid
@@ -20,6 +21,8 @@ from app.models.schemas import BatchUploadResponse, BatchUploadFileResult
 from app.services.document_service import parse_file
 from app.services.splitter_service import split_text
 from app.database.chroma_client import add_documents, find_by_file_hash
+
+logger = logging.getLogger(__name__)
 
 # 创建文档路由
 router = APIRouter(prefix="/api/document", tags=["文档管理"])
@@ -55,11 +58,13 @@ def _process_batch(task_id: str, files: list[UploadFile], folder: str) -> None:
         try:
             result = _process_single_file(file, folder)
         except Exception as e:
+            logger.exception("文件处理异常: %s", file.filename)
             result = BatchUploadFileResult(
                 success=False,
                 filename=file.filename or "未知文件",
                 message=f"处理异常: {str(e)}",
             )
+        logger.info("文件入库[%d/%d] %s: %s", i + 1, len(files), result.filename, result.message)
         results.append(result)
         # 序列化为 dict 存入任务表，避免与状态轮询的读取产生竞态
         _update_task(task_id, files=[r.model_dump() for r in results], done=i + 1)

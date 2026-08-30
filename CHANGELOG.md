@@ -4,6 +4,30 @@
 
 ---
 
+## [2026-08-30] 变更十三：日志体系
+
+> 对应《优化建议.md》#14 —— 全部 print 换为标准 logging，关键链路打点为后续调参提供数据。
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `app/config.py` | 在最早导入的模块中 `logging.basicConfig`（格式：时间 级别 [模块] 消息，级别由 `LOG_LEVEL` 环境变量控制，默认 INFO），替代 print 副作用 |
+| `app/main.py` | 启动/关闭日志（含模型加载耗时）；新增 HTTP 请求耗时中间件（健康检查与上传轮询等噪音请求不记录） |
+| `app/services/rag_service.py` | 检索命中数与耗时、元问题短路、阈值过滤触发情况 |
+| `app/services/llm_service.py` | 非流式：耗时/回答字数/prompt 与 completion tokens（`response.usage`）；流式：耗时与总字数 |
+| `app/services/embedding_service.py` | 模型加载状态 |
+| `app/api/document.py`、`app/api/knowledge.py` | 逐文件入库结果、移动操作、异常堆栈（`logger.exception`） |
+
+### 核验检查（本地 + 容器）
+
+1. ✅ 日志格式统一（`2026-08-30 14:47:41 INFO [app.services.rag_service] 检索完成: 7 条命中 (223ms)`）；
+2. ✅ LLM 打点：`LLM 生成完成: 3.1s | 回答 611 字 | tokens: 输入 2436 / 输出 327`；
+3. ✅ 请求耗时中间件：`POST /api/chat -> 200 (3316ms)`；健康检查/轮询噪音已过滤；
+4. ✅ 容器 `docker logs` 可见全部应用日志。
+
+---
+
 ## [2026-08-30] 变更十二：数据卷备份脚本
 
 > 对应变更八事故的保险措施——知识库/源文件数据卷一键备份到宿主机。

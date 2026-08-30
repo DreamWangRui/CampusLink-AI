@@ -3,6 +3,8 @@
 提供知识库文档列表查看（支持按文件夹筛选）、文件夹列表和文档删除功能
 """
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Query
 
 from app.config import UPLOAD_DIR
@@ -21,6 +23,8 @@ from app.database.chroma_client import (
     delete_document,
     move_document,
 )
+
+logger = logging.getLogger(__name__)
 
 # 创建知识库路由
 router = APIRouter(prefix="/api/knowledge", tags=["知识库管理"])
@@ -142,6 +146,7 @@ def move_knowledge_document(request: MoveDocumentRequest) -> MoveDocumentRespons
                 message=f"文档 '{request.doc_id}' 不存在",
             )
         display = folder if folder else "未分类"
+        logger.info("文档 %s 已移动到「%s」（%d 个 Chunk）", request.doc_id, display, moved)
         return MoveDocumentResponse(
             success=True,
             message=f"已成功移动 {moved} 个 Chunk 到「{display}」",

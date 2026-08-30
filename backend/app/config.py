@@ -3,8 +3,19 @@ CampusLink AI 配置文件
 管理所有环境变量和应用配置
 """
 
+import logging
 import os
 from pathlib import Path
+
+# ==================== 日志基础配置 ====================
+# config 是应用最早被导入的模块，在此初始化保证所有模块日志都有输出格式
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 # ==================== 加载 .env 环境变量 ====================
 # 从项目根目录加载 .env 文件（backend 的上一级）
@@ -21,9 +32,9 @@ BASE_DIR = Path(os.getenv("APP_BASE_DIR", str(Path(__file__).resolve().parent.pa
 env_path = BASE_DIR / ".env"
 if env_path.exists():
     load_dotenv(env_path)
-    print(f"[OK] 已加载环境变量文件: {env_path}")
+    logger.info("已加载环境变量文件: %s", env_path)
 else:
-    print(f"[WARN] 未找到 .env 文件: {env_path}，将使用默认配置")
+    logger.warning("未找到 .env 文件: %s，将使用环境变量/默认配置", env_path)
 
 # 上传文件存储目录
 UPLOAD_DIR = BASE_DIR / "uploads"

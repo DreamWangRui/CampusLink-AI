@@ -6,10 +6,15 @@ RAG 服务（检索增强生成核心编排层）
 3. 构造 Prompt → 调用 LLM 生成回答
 """
 
+import logging
+import time
+
 from app.services.embedding_service import embed_texts
 from app.database.chroma_client import search_similar, get_all_documents
 from app.services.llm_service import generate_answer
 from app.config import TOP_K, SIMILARITY_DISTANCE_THRESHOLD
+
+logger = logging.getLogger(__name__)
 
 
 # ==================== 元问题（询问助手自身）识别 ====================
@@ -71,12 +76,15 @@ def retrieve(question: str) -> tuple[list[str], list[dict], str | None]:
     """
     # 步骤 0：元问题（询问助手自身）直接自我介绍，不进入检索流程（零 token、零延迟）
     if _is_meta_question(question):
+        logger.info("元问题短路: %s", question[:50])
         return [], [], _meta_answer()
 
     # 步骤 1+2：语义检索
     # ChromaDB 的 query 方法内部会自动调用 EmbeddingFunction 将问题向量化
     # 然后使用余弦相似度检索最相关的 Top K 个文档片段
+    t0 = time.time()
     retrieved_docs = search_similar(query=question, top_k=TOP_K)
+    logger.info("检索完成: %d 条命中 (%.0fms)", len(retrieved_docs), (time.time() - t0) * 1000)
 
     # 知识库整体为空
     if not retrieved_docs:
@@ -91,6 +99,7 @@ def retrieve(question: str) -> tuple[list[str], list[dict], str | None]:
         if doc["distance"] <= SIMILARITY_DISTANCE_THRESHOLD
     ]
     if not relevant_docs:
+        logger.info("全部 %d 条命中被阈值 %.2f 过滤，走兜底话术", len(retrieved_docs), SIMILARITY_DISTANCE_THRESHOLD)
         return [], [], (
             f"关于「{question}」，目前知识库中暂无相关信息，请咨询学校相关部门。\n\n"
             f"目前知识库收录了以下内容，你可以这样提问：\n{_build_scope_summary()}\n\n"

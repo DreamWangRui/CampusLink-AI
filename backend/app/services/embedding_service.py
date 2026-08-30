@@ -4,10 +4,13 @@ Embedding 向量化服务
 模型特点：中文效果优秀、免费、本地运行、资源占用低
 """
 
+import logging
 import os
 from pathlib import Path
 
 from app.config import EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSION
+
+logger = logging.getLogger(__name__)
 
 # ==================== HF 离线模式自动启用 ====================
 # 模型已在本地缓存时跳过 huggingface_hub 的联网元数据校验：
@@ -39,11 +42,11 @@ def get_embedding_model() -> SentenceTransformer:
     """
     global _embedding_model
     if _embedding_model is None:
-        print(f"正在加载 Embedding 模型: {EMBEDDING_MODEL_NAME} ...")
+        logger.info("正在加载 Embedding 模型: %s ...", EMBEDDING_MODEL_NAME)
         # 加载 BAAI/bge-small-zh-v1.5 模型
         # 该模型向量维度为 512，中文语义理解效果优秀
         _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-        print(f"Embedding 模型加载完成，向量维度: {EMBEDDING_DIMENSION}")
+        logger.info("Embedding 模型加载完成，向量维度: %d", EMBEDDING_DIMENSION)
     return _embedding_model
 
 

@@ -4,8 +4,13 @@ LLM 服务
 使用 OpenAI Python SDK，兼容 DeepSeek API
 """
 
+import logging
+import time
+
 from openai import OpenAI
 from app.config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, MODEL_NAME
+
+logger = logging.getLogger(__name__)
 
 # ==================== 系统提示词 ====================
 # 定义 AI 助手的角色和行为规范
@@ -46,6 +51,7 @@ def generate_answer(question: str, context_chunks: list[str]) -> str:
     user_message = _build_user_message(question, context_chunks)
 
     # 调用 DeepSeek Chat API
+    t0 = time.time()
     response = _client.chat.completions.create(
         model=MODEL_NAME,
         messages=[
@@ -54,6 +60,14 @@ def generate_answer(question: str, context_chunks: list[str]) -> str:
         ],
         temperature=0.3,  # 较低温度以保证回答的准确性和一致性
         max_tokens=2048,   # 增大回答长度限制，让回答更完整
+    )
+    usage = response.usage
+    logger.info(
+        "LLM 生成完成: %.1fs | 回答 %d 字 | tokens: 输入 %d / 输出 %d",
+        time.time() - t0,
+        len(response.choices[0].message.content or ""),
+        usage.prompt_tokens if usage else -1,
+        usage.completion_tokens if usage else -1,
     )
 
     # 提取模型生成的回答文本
@@ -82,11 +96,15 @@ def generate_answer_stream(question: str, context_chunks: list[str]):
         max_tokens=2048,
         stream=True,
     )
+    t0 = time.time()
+    total_chars = 0
     for chunk in stream:
         if chunk.choices:
             delta = chunk.choices[0].delta.content
             if delta:
+                total_chars += len(delta)
                 yield delta
+    logger.info("LLM 流式生成完成: %.1fs | 回答 %d 字", time.time() - t0, total_chars)
 
 
 def _build_user_message(question: str, context_chunks: list[str]) -> str:
