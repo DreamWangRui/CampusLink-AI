@@ -298,8 +298,23 @@ def test_register_and_user_login(monkeypatch):
     assert body["role"] == "user"
     user_token = body["token"]
 
-    # 用户令牌不能访问管理面（需要管理员角色）
+    # 用户令牌可以只读浏览知识库（列表/分类），但不能写操作
     r = client.get("/api/knowledge/list", headers={"Authorization": f"Bearer {user_token}"})
+    assert r.status_code == 200
+    r = client.get("/api/knowledge/folders", headers={"Authorization": f"Bearer {user_token}"})
+    assert r.status_code == 200
+    r = client.put(
+        "/api/knowledge/move",
+        json={"doc_id": "d1", "folder": "x"},
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert r.status_code == 403
+    r = client.request(
+        "DELETE",
+        "/api/knowledge/delete",
+        json={"doc_id": "d1"},
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
     assert r.status_code == 403
 
     # 用户可以访问自己的历史（暂为空）
