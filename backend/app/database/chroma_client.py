@@ -189,11 +189,11 @@ def get_all_documents(folder: str | None = None) -> list[dict]:
     collection = get_collection()
 
     try:
-        # 如果指定了文件夹，按 metadata 过滤
+        # 仅拉取 metadata（不取正文），避免大知识库时把全部文档内容读进内存
         if folder:
-            all_data = collection.get(where={"folder": folder})
+            all_data = collection.get(where={"folder": folder}, include=["metadatas"])
         else:
-            all_data = collection.get()
+            all_data = collection.get(include=["metadatas"])
     except Exception:
         return []
 
