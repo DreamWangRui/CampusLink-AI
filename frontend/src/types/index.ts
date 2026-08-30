@@ -85,6 +85,16 @@ export interface BatchUploadResponse {
   message: string
 }
 
+/** 异步上传任务状态（轮询返回） */
+export interface UploadTaskStatus {
+  task_id: string
+  state: 'processing' | 'done'
+  files: BatchUploadFileResult[]
+  done: number
+  total: number
+  message: string
+}
+
 /** 文件夹/分类信息 */
 export interface FolderInfo {
   name: string

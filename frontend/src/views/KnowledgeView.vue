@@ -35,10 +35,25 @@
         </div>
       </el-upload>
 
-      <!-- 上传进度提示 -->
+      <!-- 上传进度提示：整体进度 + 逐文件实时结果 -->
       <div v-if="knowledgeStore.uploading" class="upload-progress">
-        <el-progress :percentage="100" :indeterminate="true" :duration="3" />
-        <span>正在解析文档并导入知识库...</span>
+        <el-progress
+          :percentage="knowledgeStore.taskTotal ? Math.round(knowledgeStore.taskDone / knowledgeStore.taskTotal * 100) : 0"
+          :stroke-width="10"
+        />
+        <span>{{ knowledgeStore.taskDone }} / {{ knowledgeStore.taskTotal }} 个文件已处理</span>
+      </div>
+      <div v-if="knowledgeStore.uploading && knowledgeStore.taskFiles.length" class="upload-task-files">
+        <div
+          v-for="(f, i) in knowledgeStore.taskFiles"
+          :key="i"
+          class="task-file-item"
+        >
+          <el-icon v-if="f.success" class="task-ok"><CircleCheckFilled /></el-icon>
+          <el-icon v-else class="task-fail"><CircleCloseFilled /></el-icon>
+          <span class="task-file-name">{{ f.filename }}</span>
+          <span class="task-file-msg" :class="f.success ? 'ok' : 'fail'">{{ f.message }}</span>
+        </div>
       </div>
 
       <!-- 已选择的文件列表 + 文件夹选择 -->
@@ -274,8 +289,11 @@ async function handleUpload() {
   try {
     const message = await knowledgeStore.upload(selectedFiles.value, uploadFolder.value)
     ElMessage.success(message)
-    // 上传成功后清空
-    selectedFiles.value = []
+    // 失败的文件保留在已选列表中便于重试，成功的移除
+    const failedNames = new Set(
+      knowledgeStore.taskFiles.filter(f => !f.success).map(f => f.filename)
+    )
+    selectedFiles.value = selectedFiles.value.filter(f => failedNames.has(f.name))
   } catch (error: any) {
     ElMessage.error(typeof error === 'string' ? error : error.message || '上传失败')
   }
@@ -441,6 +459,65 @@ onMounted(() => {
   border-radius: 6px;
   font-size: 13px;
   color: #606266;
+}
+
+.upload-progress :deep(.el-progress) {
+  flex: 1;
+}
+
+/* 逐文件上传结果 */
+.upload-task-files {
+  margin-top: 8px;
+  padding: 8px 16px;
+  background: #fff;
+  border-radius: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.task-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px solid #f5f7fa;
+}
+
+.task-file-item:last-child {
+  border-bottom: none;
+}
+
+.task-ok {
+  color: #67c23a;
+}
+
+.task-fail {
+  color: #f56c6c;
+}
+
+.task-file-name {
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #303133;
+}
+
+.task-file-msg {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-file-msg.ok {
+  color: #909399;
+}
+
+.task-file-msg.fail {
+  color: #f56c6c;
 }
 
 /* ==================== 已选文件面板 ==================== */

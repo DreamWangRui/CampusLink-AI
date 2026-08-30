@@ -2,7 +2,7 @@
  * 知识库管理相关 API
  */
 import api from './index'
-import type { KnowledgeListResponse, DeleteDocumentResponse, MoveDocumentResponse, BatchUploadResponse, FolderInfo } from '../types'
+import type { KnowledgeListResponse, DeleteDocumentResponse, MoveDocumentResponse, BatchUploadResponse, FolderInfo, UploadTaskStatus } from '../types'
 
 /**
  * 获取知识库文档列表（支持按文件夹筛选）
@@ -68,4 +68,28 @@ export async function uploadDocuments(files: File[], folder: string): Promise<Ba
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 300000, // 批量上传 + 解析 + 向量化可能需要较长时间（5 分钟）
   })
+}
+
+/**
+ * 异步批量上传：立即返回任务 ID，解析入库在后台执行
+ * POST /api/document/upload-async
+ */
+export async function uploadDocumentsAsync(files: File[], folder: string): Promise<{ task_id: string }> {
+  const formData = new FormData()
+  files.forEach(file => formData.append('files', file))
+  if (folder) {
+    formData.append('folder', folder)
+  }
+  return api.post('/document/upload-async', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000, // 仅提交文件本身，一般远快于同步上传
+  })
+}
+
+/**
+ * 查询异步上传任务进度
+ * GET /api/document/status/{taskId}
+ */
+export async function getUploadTaskStatus(taskId: string): Promise<UploadTaskStatus> {
+  return api.get(`/document/status/${taskId}`)
 }

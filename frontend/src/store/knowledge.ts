@@ -4,8 +4,11 @@
  */
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { KnowledgeDocument, FolderInfo } from '../types'
-import { getKnowledgeList, getFolders, deleteKnowledgeDocument, moveKnowledgeDocument, uploadDocuments } from '../api/knowledge'
+import type { KnowledgeDocument, FolderInfo, BatchUploadFileResult } from '../types'
+import {
+  getKnowledgeList, getFolders, deleteKnowledgeDocument,
+  moveKnowledgeDocument, uploadDocumentsAsync, getUploadTaskStatus,
+} from '../api/knowledge'
 
 export const useKnowledgeStore = defineStore('knowledge', () => {
   // ==================== 状态 ====================
@@ -26,6 +29,13 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
 
   /** 当前选中的文件夹筛选（空字符串表示全部） */
   const selectedFolder = ref('')
+
+  /** 异步上传任务的逐文件实时进度 */
+  const taskFiles = ref<BatchUploadFileResult[]>([])
+
+  /** 任务进度：已完成文件数 / 总数 */
+  const taskDone = ref(0)
+  const taskTotal = ref(0)
 
   // ==================== 操作 ====================
 
@@ -69,20 +79,39 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
   }
 
   /**
-   * 批量上传文档到知识库
+   * 批量上传文档到知识库（异步任务 + 轮询逐文件进度）
    *
    * @param files - 要上传的文件数组
    * @param folder - 目标文件夹名称
-   * @returns 上传结果消息
+   * @returns 上传结果汇总消息
    */
   async function upload(files: File[], folder: string): Promise<string> {
     uploading.value = true
+    taskFiles.value = []
+    taskDone.value = 0
+    taskTotal.value = files.length
     try {
-      const response = await uploadDocuments(files, folder)
-      // 上传成功后刷新列表和文件夹
+      // 1. 提交异步任务（立即返回任务 ID）
+      const { task_id } = await uploadDocumentsAsync(files, folder)
+
+      // 2. 轮询任务进度（1.2s 间隔，最长 10 分钟）
+      const deadline = Date.now() + 10 * 60 * 1000
+      let status
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 1200))
+        status = await getUploadTaskStatus(task_id)
+        taskFiles.value = status.files
+        taskDone.value = status.done
+        if (status.state === 'done') break
+      }
+      if (!status || status.state !== 'done') {
+        throw new Error('上传任务超时，请稍后在文档列表中确认结果')
+      }
+
+      // 3. 完成后刷新列表和文件夹
       await loadDocuments()
       await loadFolders()
-      return response.message || `上传完成`
+      return status.message || '上传完成'
     } catch (error: any) {
       const msg = error?.response?.data?.detail || error.message || '上传失败'
       throw new Error(msg)
@@ -137,6 +166,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
   return {
     documents, total, loading, uploading,
     folders, selectedFolder,
+    taskFiles, taskDone, taskTotal,
     loadDocuments, loadFolders, setFolderFilter,
     upload, removeDocument, moveDocument,
   }
