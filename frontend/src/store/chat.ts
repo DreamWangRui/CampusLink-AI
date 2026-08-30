@@ -6,6 +6,8 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import type { ChatMessage, HistoryItem, SourceRef } from '../types'
+import { useAuthStore } from './auth'
+import { clearChatHistory, getChatHistory } from '../api/chat'
 
 /** SSE 数据事件结构 */
 interface StreamEvent {
@@ -67,9 +69,47 @@ export const useChatStore = defineStore('chat', () => {
 
   // ==================== 操作 ====================
 
+  const authStore = useAuthStore()
+
+  /**
+   * 已登录时从服务端拉取云端聊天记录（覆盖本地缓存）
+   */
+  async function syncFromServer() {
+    if (!authStore.isLoggedIn) return
+    try {
+      const resp = await getChatHistory()
+      messages.value = resp.messages.map(m => ({
+        role: m.role,
+        content: m.content,
+        time: (m.created_at || '').slice(11, 19) || new Date().toLocaleTimeString('zh-CN'),
+        sources: m.sources ?? [],
+      }))
+    } catch {
+      // 拉取失败时保留本地缓存
+    }
+  }
+
+  // 登录后拉取云端记录；退出后清空本地（匿名重新开始）
+  watch(
+    () => authStore.isLoggedIn,
+    (loggedIn) => {
+      if (loggedIn) {
+        syncFromServer()
+      } else {
+        messages.value = []
+      }
+    },
+  )
+
+  // 已登录用户启动时同步云端记录
+  if (authStore.isLoggedIn) {
+    syncFromServer()
+  }
+
   /**
    * 发送用户消息，通过 SSE 流式接口获取 AI 回答（逐字渲染）
    * 自动携带最近对话历史，支持"那评定比例呢？"这类追问
+   * 已登录用户携带令牌，问答自动持久化到云端
    *
    * @param question - 用户输入的问题
    */
@@ -100,10 +140,14 @@ export const useChatStore = defineStore('chat', () => {
     loading.value = true
 
     try {
-      // axios 不支持浏览器端流式读取，这里使用原生 fetch
+      // axios 不支持浏览器端流式读取，这里使用原生 fetch（带登录令牌供云端持久化）
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (authStore.token) {
+        headers['Authorization'] = `Bearer ${authStore.token}`
+      }
       const response = await fetch('/api/chat/stream', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ question, history }),
       })
       if (!response.ok || !response.body) {
@@ -145,11 +189,18 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * 清空聊天记录
+   * 清空聊天记录（已登录用户同时清空云端历史）
    */
-  function clear() {
+  async function clear() {
     messages.value = []
+    if (authStore.isLoggedIn) {
+      try {
+        await clearChatHistory()
+      } catch {
+        // 云端清理失败不阻断本地清空
+      }
+    }
   }
 
-  return { messages, loading, send, clear }
+  return { messages, loading, send, clear, syncFromServer }
 })

@@ -265,7 +265,7 @@
       />
       <template #footer>
         <div class="auth-footer">
-          <el-button v-if="loggedIn" text type="danger" @click="handleLogout">退出登录</el-button>
+          <el-button v-if="authStore.isLoggedIn" text type="danger" @click="handleLogout">退出登录</el-button>
           <span class="auth-footer-actions">
             <el-button @click="authDialogVisible = false">取消</el-button>
             <el-button type="primary" :loading="knowledgeStore.loading" @click="handleLogin">
@@ -294,13 +294,15 @@ import {
   Refresh,
   UploadFilled,
 } from '@element-plus/icons-vue'
+import { useAuthStore } from '../store/auth'
 import { useKnowledgeStore } from '../store/knowledge'
 import { formatFileSize } from '../utils/format'
 import type { UploadFile } from 'element-plus'
 import type { KnowledgeDocument } from '../types'
 
-// ==================== 知识库状态管理 ====================
+// ==================== 状态管理 ====================
 const knowledgeStore = useKnowledgeStore()
+const authStore = useAuthStore()
 
 // ==================== 文件选择状态 ====================
 const selectedFiles = ref<File[]>([])
@@ -416,17 +418,12 @@ function refreshAll() {
 const authDialogVisible = ref(false)
 const authUsername = ref('admin')
 const authPassword = ref('')
-/** 当前浏览器是否已持有登录令牌（用于显示"退出登录"） */
-const loggedIn = ref(!!localStorage.getItem('campuslink_admin_token'))
 
 // 鉴权失败（401）时自动弹出登录弹窗
 watch(
   () => knowledgeStore.needsAuth,
   (needs) => {
-    if (needs) {
-      loggedIn.value = false
-      authDialogVisible.value = true
-    }
+    if (needs) authDialogVisible.value = true
   },
 )
 
@@ -439,11 +436,10 @@ async function handleLogin() {
     return
   }
   try {
-    await knowledgeStore.login(username, password)
+    const role = await authStore.login(username, password)
     authDialogVisible.value = false
-    loggedIn.value = true
     authPassword.value = ''
-    ElMessage.success('登录成功')
+    ElMessage.success(role === 'admin' ? '管理员登录成功' : '登录成功')
   } catch (error: any) {
     ElMessage.error(typeof error === 'string' ? error : error.message || '登录失败')
   }
@@ -451,9 +447,9 @@ async function handleLogin() {
 
 /** 退出登录：清除令牌，管理接口将返回 401 并重新弹出登录弹窗 */
 async function handleLogout() {
-  await knowledgeStore.logout()
-  loggedIn.value = false
+  await authStore.logout()
   ElMessage.success('已退出登录')
+  await Promise.all([knowledgeStore.loadDocuments(), knowledgeStore.loadFolders()])
 }
 
 // ==================== 页面加载 ====================

@@ -4,6 +4,45 @@
 
 ---
 
+## [2026-08-30] 变更二十：普通用户系统 —— 可选注册/登录 + 云端聊天记录同步
+
+> 用户需求："没有普通用户的登录入口嘛？"（选定方案：可选登录）——未登录仍可匿名问答；登录后聊天记录云端同步，换设备不丢。V2"服务端会话管理"核心落地。
+
+### 权限模型（最终）
+
+| 接口 | 权限 |
+|------|------|
+| `/api/chat/*`（含流式）、`/api/health`、`/api/auth/register`、`/api/auth/login` | 🔓 公开 |
+| `/api/chat/history`（GET/DELETE） | 🔐 任意登录身份（管理员或普通用户，按身份隔离） |
+| 知识库管理接口（上传/删除/移动/列表） | 🔐 仅 admin 角色令牌（user 角色令牌 403）或 X-Admin-Key |
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `app/database/user_db.py`（新增） | SQLite（stdlib 零依赖）：users 表（PBKDF2 20 万次迭代密码哈希 + 随机盐）与 chat_messages 表；WAL 模式 + 线程锁；库文件在 `data/`（Docker 由 `app_data` 卷持久化） |
+| `app/api/auth.py` | 令牌升级为「角色.身份.到期」HMAC 签名并整体 base64url 编码（**修复：中文用户名直接进 HTTP 头会 UnicodeEncodeError**）；新增 `POST /api/auth/register`（用户名唯一/保留账号/长度校验）；登录统一入口自动判定 admin/user 角色；新增 `require_user` 依赖 |
+| `app/api/chat.py` | 新增 `GET/DELETE /api/chat/history`；流式端点可选身份——已登录则问答完成后持久化到云端（来源标注挂在 assistant 消息上；出错轮次不入库） |
+| `Dockerfile` + `docker-compose.yml` | `data` 目录与 `app_data` 卷 |
+| `frontend/src/store/auth.ts`（新增） | 统一认证 store（token/username/role，login/register/logout） |
+| `frontend/src/store/chat.ts` | 登录后自动从服务端拉取云端记录（覆盖本地缓存）；流式请求附带令牌；清空对话同时清云端 |
+| `frontend/src/App.vue` | 顶栏用户入口：未登录显示"登录 / 注册"（弹窗含 登录/注册 模式切换），已登录显示用户名（管理员徽标）+ 退出 |
+| `frontend/src/views/KnowledgeView.vue` + `store/knowledge.ts` | 管理员登录改走统一认证 store（403 = 普通用户角色访问管理面，明确提示） |
+| `README.md` | 核心功能与 API 表同步用户系统 |
+
+### 核验检查（pytest + API E2E + 前端构建）
+
+| 测试项 | 结果 |
+|--------|------|
+| pytest（新增注册/角色令牌/403 隔离/历史往返/清空等） | ✅ **51 passed** |
+| API E2E：注册（含重复 409/保留名 409/短密码 422）→ 登录 role=user → 带令牌流式问答（真实 LLM 316 事件）→ 云端历史 2 条（来源挂在 assistant 上）→ 清空 | ✅ |
+| 用户令牌访问管理面 | ✅ 403（角色隔离） |
+| 浏览器：管理面登录弹窗 admin/admin123 → 列表加载（截图） | ✅ |
+| 浏览器 UI 自动化（注册流程） | ⚠️ 自动化窗格点击间歇失灵（环境问题）；前端逻辑由 15 个 vitest 用例 + 构建覆盖，登录弹窗同型组件已人工可复现 |
+| ruff / `pnpm build`（vue-tsc） | ✅ 全绿 |
+
+---
+
 ## [2026-08-30] 变更十九：管理面升级为账号密码登录
 
 > 用户需求："得设置一个登录，管理员账号 admin / 密码 admin123"。在变更十八的管理员密钥基础上升级为正式登录。

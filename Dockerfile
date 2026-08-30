@@ -50,7 +50,7 @@ RUN uv sync --frozen --no-dev
 COPY backend/ ./
 
 # 创建数据目录（生产环境由 docker-compose 卷挂载覆盖）
-RUN mkdir -p /app/uploads /app/chroma_db
+RUN mkdir -p /app/uploads /app/chroma_db /app/data
 
 # 数据目录基准：容器内代码在 /app/app/config.py，向上推导会错误得到 /，
 # 显式指定为 /app 使 chroma_db / uploads 落在挂载卷上（持久化）

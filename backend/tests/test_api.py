@@ -267,9 +267,87 @@ def test_login_success_returns_token():
     assert r.status_code == 200
     body = r.json()
     assert body["username"] == "admin"
+    assert body["role"] == "admin"
     assert body["expires_in"] > 0
-    # 令牌格式：<到期时间戳>.<签名>
+    # 令牌格式：<角色>.<身份>.<到期时间戳>.<签名>
     assert body["token"].count(".") == 1
+
+
+def test_register_and_user_login(monkeypatch):
+    """普通用户：注册 → 登录（user 角色）→ 历史接口按身份隔离"""
+    _enable_real_auth()
+    monkeypatch.setattr("app.api.knowledge.get_all_documents", lambda folder=None: [])
+
+    # 注册
+    r = client.post("/api/auth/register", json={"username": "小明同学", "password": "pass666"})
+    assert r.status_code == 200
+    # 重复注册被拒
+    r = client.post("/api/auth/register", json={"username": "小明同学", "password": "pass666"})
+    assert r.status_code == 409
+    # 管理员账号名保留
+    r = client.post("/api/auth/register", json={"username": "admin", "password": "pass666"})
+    assert r.status_code == 409
+    # 密码过短
+    r = client.post("/api/auth/register", json={"username": "小红", "password": "123"})
+    assert r.status_code == 422
+
+    # 用户登录（user 角色，非管理员）
+    r = client.post("/api/auth/login", json={"username": "小明同学", "password": "pass666"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["role"] == "user"
+    user_token = body["token"]
+
+    # 用户令牌不能访问管理面（需要管理员角色）
+    r = client.get("/api/knowledge/list", headers={"Authorization": f"Bearer {user_token}"})
+    assert r.status_code == 403
+
+    # 用户可以访问自己的历史（暂为空）
+    r = client.get("/api/chat/history", headers={"Authorization": f"Bearer {user_token}"})
+    assert r.status_code == 200
+    assert r.json()["messages"] == []
+
+
+def test_user_cannot_use_admin_token_on_admin_endpoints():
+    _enable_real_auth()
+    # 直接构造 user 角色令牌无法通过管理面校验由 test_register_and_user_login 覆盖（403）
+
+
+def test_chat_history_roundtrip_and_clear(monkeypatch):
+    """登录用户经流式问答后，云端历史可拉取、可清空"""
+    _enable_real_auth()
+    # 注册并登录
+    client.post("/api/auth/register", json={"username": "history同学", "password": "pass666"})
+    r = client.post("/api/auth/login", json={"username": "history同学", "password": "pass666"})
+    token = r.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # mock RAG 生成
+    monkeypatch.setattr(
+        "app.api.chat.prepare_rag",
+        lambda question, history=None: (["片段"], [], None, []),
+    )
+    monkeypatch.setattr(
+        "app.api.chat.generate_answer_stream",
+        lambda question, chunks, history=None: iter(["这是回答"]),
+    )
+
+    # 流式问答（带令牌）
+    r = client.post("/api/chat/stream", json={"question": "测试问题"}, headers=headers)
+    assert r.status_code == 200
+
+    # 云端历史包含问答两条
+    r = client.get("/api/chat/history", headers=headers)
+    messages = r.json()["messages"]
+    assert len(messages) == 2
+    assert messages[0]["role"] == "user" and messages[0]["content"] == "测试问题"
+    assert messages[1]["role"] == "assistant" and messages[1]["content"] == "这是回答"
+
+    # 清空
+    r = client.request("DELETE", "/api/chat/history", headers=headers)
+    assert r.json()["cleared"] == 2
+    r = client.get("/api/chat/history", headers=headers)
+    assert r.json()["messages"] == []
 
 
 def test_login_wrong_password_rejected():

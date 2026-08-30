@@ -17,3 +17,15 @@ def _bypass_admin_auth():
     app.dependency_overrides[require_admin] = lambda: None
     yield
     app.dependency_overrides.pop(require_admin, None)
+
+
+@pytest.fixture(autouse=True)
+def _clean_user_db():
+    """每个用例前清空用户与会话表（SQLite 文件跨测试运行持久化）"""
+    from app.database import user_db
+
+    conn = user_db._get_conn()
+    conn.execute("DELETE FROM chat_messages")
+    conn.execute("DELETE FROM users")
+    conn.commit()
+    yield

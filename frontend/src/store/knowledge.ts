@@ -9,9 +9,7 @@ import {
   getKnowledgeList, getFolders, deleteKnowledgeDocument,
   moveKnowledgeDocument, uploadDocumentsAsync, getUploadTaskStatus,
 } from '../api/knowledge'
-import { adminLogin } from '../api/auth'
 
-const ADMIN_TOKEN_KEY = 'campuslink_admin_token'
 
 export const useKnowledgeStore = defineStore('knowledge', () => {
   // ==================== 状态 ====================
@@ -47,26 +45,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
   function markAuthError(error: any): void {
     if (error?.response?.status === 401) {
       needsAuth.value = true
-      localStorage.removeItem(ADMIN_TOKEN_KEY)
     }
-  }
-
-  /**
-   * 管理员登录：保存令牌、清除 needsAuth 并重新加载
-   * 账号/密码错误（401）会抛出错误，needsAuth 保持置位
-   */
-  async function login(username: string, password: string): Promise<void> {
-    const resp = await adminLogin(username, password)
-    localStorage.setItem(ADMIN_TOKEN_KEY, resp.token)
-    needsAuth.value = false
-    await Promise.all([loadDocuments(), loadFolders()])
-  }
-
-  /** 退出登录：清除令牌并重新加载（接口将返回 401，弹窗自动弹出） */
-  async function logout(): Promise<void> {
-    localStorage.removeItem(ADMIN_TOKEN_KEY)
-    needsAuth.value = true
-    await Promise.all([loadDocuments(), loadFolders()])
   }
 
   // ==================== 操作 ====================
@@ -205,7 +184,6 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     taskFiles, taskDone, taskTotal,
     needsAuth,
     loadDocuments, loadFolders, setFolderFilter,
-    login, logout,
     upload, removeDocument, moveDocument,
   }
 })

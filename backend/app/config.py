@@ -40,6 +40,10 @@ else:
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# 用户与会话数据目录（SQLite：注册用户、云端聊天记录）
+DATA_DIR = BASE_DIR / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
 # ChromaDB 持久化存储目录
 CHROMA_DB_DIR = BASE_DIR / "chroma_db"
 CHROMA_DB_DIR.mkdir(parents=True, exist_ok=True)

@@ -28,6 +28,7 @@ export interface LoginResponse {
   token: string
   expires_in: number
   username: string
+  role: 'admin' | 'user'
 }
 
 /** 聊天响应 */

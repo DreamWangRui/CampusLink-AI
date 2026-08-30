@@ -6,11 +6,13 @@
 
 ## ✨ 核心功能
 
-- 📚 **文档导入** — 上传校园知识文档（PDF / DOCX / TXT / Markdown），自动解析入库
-- 🔍 **语义检索** — 基于 BAAI/bge-small-zh-v1.5 向量模型，精准匹配知识库内容
-- 🤖 **AI 问答** — 调用 DeepSeek 大模型，结合检索到的知识生成准确回答
-- 💬 **聊天界面** — 直观的对话式交互，支持 Markdown 渲染
-- 🗂️ **知识库管理** — 查看已导入文档、删除过期内容
+- 💬 **智能问答** — RAG 检索增强生成，SSE 流式输出 + 参考来源标注
+- 🔄 **多轮对话** — 追问自动改写（"那评定比例呢？"），上下文连贯问答
+- 👤 **用户系统** — 普通用户可选注册/登录，聊天记录云端同步（跨设备不丢）；未登录可匿名问答
+- 🔐 **管理面鉴权** — 知识库管理操作需管理员登录（默认 admin/admin123，可配置）
+- 📚 **文档导入** — 批量上传 PDF / DOCX / TXT / Markdown（SHA-256 去重、异步进度、表格解析）
+- 🔍 **语义检索** — BAAI/bge-small-zh-v1.5 向量检索 + 相似度阈值兜底
+- 🗂️ **知识库管理** — 文件夹分类、文档移动、Web 管理界面
 
 ## 🏗️ 技术栈
 
@@ -177,6 +179,10 @@ docker run --rm -v campuslink_chroma_data:/data -v "$(pwd)/backups":/backup alpi
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| `POST` | `/api/auth/register` | 注册普通用户 |
+| `POST` | `/api/auth/login` | 登录（管理员/普通用户），签发令牌 |
+| `GET` | `/api/chat/history` | 获取当前用户云端聊天记录 🔒 |
+| `DELETE` | `/api/chat/history` | 清空当前用户云端聊天记录 🔒 |
 | `POST` | `/api/chat` | 发送问题，获取 AI 回答 |
 | `POST` | `/api/chat/stream` | 流式问答（SSE） |
 | `POST` | `/api/document/upload` | 批量上传文档并导入知识库（支持文件夹分类）🔒 |
@@ -187,7 +193,7 @@ docker run --rm -v campuslink_chroma_data:/data -v "$(pwd)/backups":/backup alpi
 | `DELETE` | `/api/knowledge/delete` | 删除指定文档 🔒 |
 | `GET` | `/api/health` | 健康检查 |
 
-> 🔒 = 需要管理员登录：先 `POST /api/auth/login`（`{"username", "password"}`）获取令牌，再以 `Authorization: Bearer <token>` 请求；脚本/curl 也可用请求头 `X-Admin-Key`（需配置 `ADMIN_KEY`）。聊天问答保持公开。
+> 🔒 = 需要登录：先 `POST /api/auth/login`（`{"username", "password"}`）获取令牌，再以 `Authorization: Bearer <token>` 请求。普通用户登录后问答自动云端同步；管理员可管理知识库。聊天问答本身保持公开。
 
 ### 示例
 
