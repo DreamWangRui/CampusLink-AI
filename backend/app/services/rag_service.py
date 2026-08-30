@@ -110,22 +110,59 @@ def retrieve(question: str) -> tuple[list[str], list[dict], str | None]:
     return context_chunks, relevant_docs, None
 
 
-def rag_query(question: str) -> tuple[str, list[dict]]:
+def _sanitize_history(history: list[dict] | None) -> list[dict]:
+    """清洗对话历史：只保留合法角色与非空内容，最多 6 条"""
+    clean = [
+        {"role": item["role"], "content": item["content"]}
+        for item in (history or [])
+        if item.get("role") in ("user", "assistant") and item.get("content")
+    ]
+    return clean[-6:]
+
+
+def prepare_rag(question: str, history: list[dict] | None = None) -> tuple[list[str], list[dict], str | None, list[dict]]:
+    """
+    RAG 准备阶段（非流式/流式共用）：追问改写 → 检索 → 阈值过滤
+
+    Args:
+        question: 用户最新问题
+        history: 最近对话历史（有历史时先做追问改写再检索）
+
+    Returns:
+        tuple: (相关片段文本, 过滤后片段列表, 兜底回答或 None, 清洗后的历史)
+    """
+    clean_history = _sanitize_history(history)
+
+    # 追问改写：有历史时把"那评定比例呢？"改写成独立问题再检索
+    search_question = question
+    if clean_history:
+        from app.services.llm_service import rewrite_question
+        rewritten = rewrite_question(question, clean_history)
+        if rewritten != question:
+            logger.info("追问改写: %r -> %r", question, rewritten)
+        search_question = rewritten
+
+    context_chunks, relevant_docs, fallback = retrieve(search_question)
+    return context_chunks, relevant_docs, fallback, clean_history
+
+
+def rag_query(question: str, history: list[dict] | None = None) -> tuple[str, list[dict]]:
     """
     执行完整的 RAG 问答流程（非流式）
 
     流程：
-        元问题识别 → 向量检索 → 相似度过滤 → Top K 相关片段 → DeepSeek 生成 → 返回答案
+        元问题识别 → 追问改写 → 向量检索 → 相似度过滤 → DeepSeek 生成（带历史）→ 返回答案
 
     Args:
         question: 用户原始问题
+        history: 最近对话历史（多轮对话）
 
     Returns:
         tuple[str, list[dict]]: (AI回答, 通过相似度过滤的文档片段列表)
     """
-    context_chunks, relevant_docs, fallback = retrieve(question)
+    context_chunks, relevant_docs, fallback, clean_history = prepare_rag(question, history)
     if fallback is not None:
         return fallback, relevant_docs
 
-    answer = generate_answer(question=question, context_chunks=context_chunks)
+    answer = generate_answer(question=question, context_chunks=context_chunks, history=clean_history)
     return answer, relevant_docs

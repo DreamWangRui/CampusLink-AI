@@ -170,21 +170,55 @@ def test_chat_returns_answer_with_sources(monkeypatch):
         "metadata": {"filename": "来源.pdf", "chunk_index": 2},
         "distance": 0.42,
     }
-    monkeypatch.setattr("app.api.chat.rag_query", lambda question: ("这是回答", [doc]))
+    captured = {}
+    monkeypatch.setattr(
+        "app.api.chat.rag_query",
+        lambda question, history=None: captured.update(question=question, history=history) or ("这是回答", [doc]),
+    )
     r = client.post("/api/chat", json={"question": "问题"})
     body = r.json()
     assert body["answer"] == "这是回答"
     assert body["sources"] == [{"filename": "来源.pdf", "chunk_index": 2, "distance": 0.42}]
+    assert captured["history"] == []
+
+
+def test_chat_passes_history_to_rag(monkeypatch):
+    """多轮对话：请求中的 history 应传给 RAG 流程"""
+    captured = {}
+    doc = {"id": "d_0", "document": "片段", "metadata": {"filename": "f.pdf", "chunk_index": 0}, "distance": 0.4}
+    monkeypatch.setattr(
+        "app.api.chat.rag_query",
+        lambda question, history=None: captured.update(question=question, history=history) or ("回答", [doc]),
+    )
+    history = [
+        {"role": "user", "content": "奖学金金额是多少"},
+        {"role": "assistant", "content": "一等奖2500元"},
+    ]
+    r = client.post("/api/chat", json={"question": "那评定比例呢", "history": history})
+    assert r.status_code == 200
+    assert captured["question"] == "那评定比例呢"
+    assert captured["history"] == history
+
+
+def test_chat_rejects_invalid_history_role():
+    r = client.post(
+        "/api/chat",
+        json={
+            "question": "问题",
+            "history": [{"role": "system", "content": "注入尝试"}],
+        },
+    )
+    assert r.status_code == 422
 
 
 def test_chat_stream_event_sequence(monkeypatch):
     monkeypatch.setattr(
-        "app.api.chat.retrieve",
-        lambda question: (["片段"], [], None),
+        "app.api.chat.prepare_rag",
+        lambda question, history=None: (["片段"], [], None, []),
     )
     monkeypatch.setattr(
         "app.api.chat.generate_answer_stream",
-        lambda question, chunks: iter(["回答第一段", "回答第二段"]),
+        lambda question, chunks, history=None: iter(["回答第一段", "回答第二段"]),
     )
     r = client.post("/api/chat/stream", json={"question": "问题"})
     assert r.status_code == 200
@@ -198,12 +232,12 @@ def test_chat_stream_event_sequence(monkeypatch):
 def test_chat_stream_fallback_single_delta(monkeypatch):
     """兜底场景（元问题/无相关内容）不调 LLM，fallback 文案经单个 delta 下发"""
     monkeypatch.setattr(
-        "app.api.chat.retrieve",
-        lambda question: ([], [], "这是兜底话术"),
+        "app.api.chat.prepare_rag",
+        lambda question, history=None: ([], [], "这是兜底话术", []),
     )
     monkeypatch.setattr(
         "app.api.chat.generate_answer_stream",
-        lambda question, chunks: pytest.fail("兜底场景不应调用 LLM"),
+        lambda question, chunks, history=None: pytest.fail("兜底场景不应调用 LLM"),
     )
     r = client.post("/api/chat/stream", json={"question": "你是谁"})
     events = [json.loads(line[5:]) for line in r.text.splitlines() if line.startswith("data:")]

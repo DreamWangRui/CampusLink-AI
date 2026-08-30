@@ -8,9 +8,20 @@ from pydantic import BaseModel, Field
 
 # ==================== 聊天相关模型 ====================
 
+class HistoryItem(BaseModel):
+    """对话历史条目（多轮对话用）"""
+    role: str = Field(..., description="角色：user / assistant", pattern="^(user|assistant)$")
+    content: str = Field(..., description="消息内容", min_length=1, max_length=2000)
+
+
 class ChatRequest(BaseModel):
     """聊天请求模型"""
     question: str = Field(..., description="用户提出的问题", min_length=1, max_length=2000)
+    history: list[HistoryItem] = Field(
+        default_factory=list,
+        description="最近对话历史（用于追问改写与生成上下文），最多 10 条",
+        max_length=10,
+    )
 
 
 class SourceRef(BaseModel):

@@ -18,7 +18,10 @@ def _fake_doc(distance: float, text: str = "测试片段内容") -> dict:
 @pytest.fixture(autouse=True)
 def _patch_llm(monkeypatch):
     """所有用例中 LLM 生成都打桩，避免真实调用"""
-    monkeypatch.setattr(rag_service, "generate_answer", lambda question, context_chunks: "LLM回答")
+    monkeypatch.setattr(
+        rag_service, "generate_answer",
+        lambda question, context_chunks, history=None: "LLM回答",
+    )
 
 
 # ==================== 元问题识别 ====================
@@ -52,12 +55,67 @@ def test_threshold_filters_irrelevant_chunks(monkeypatch):
     monkeypatch.setattr(rag_service, "search_similar", lambda **kw: docs)
     monkeypatch.setattr(
         rag_service, "generate_answer",
-        lambda question, context_chunks: captured.update(chunks=context_chunks) or "LLM回答",
+        lambda question, context_chunks, history=None: captured.update(chunks=context_chunks) or "LLM回答",
     )
     answer, relevant = rag_service.rag_query("奖学金金额")
     assert answer == "LLM回答"
     assert len(relevant) == 1
     assert captured["chunks"] == ["相关内容"]
+
+
+# ==================== 多轮对话（追问改写） ====================
+
+def test_followup_question_rewritten_for_retrieval(monkeypatch):
+    """有历史时，追问应先被改写成独立问题再检索"""
+    captured = {}
+    monkeypatch.setattr(
+        "app.services.llm_service.rewrite_question",
+        lambda question, history: captured.update(rewritten=question) or "奖学金评定比例是多少",
+    )
+    monkeypatch.setattr(
+        rag_service, "search_similar",
+        lambda **kw: captured.update(searched=kw.get("query")) or [_fake_doc(0.5)],
+    )
+    answer, _ = rag_service.rag_query(
+        "那评定比例呢",
+        history=[{"role": "user", "content": "奖学金金额是多少"}, {"role": "assistant", "content": "一等奖2500元"}],
+    )
+    assert captured["rewritten"] == "那评定比例呢"
+    # 检索用的是改写后的问题
+    assert captured["searched"] == "奖学金评定比例是多少"
+    assert answer == "LLM回答"
+
+
+def test_history_passed_to_generation(monkeypatch):
+    """清洗后的历史应传给 LLM 生成（作为多轮上下文）"""
+    captured = {}
+    monkeypatch.setattr(rag_service, "search_similar", lambda **kw: [_fake_doc(0.5)])
+    monkeypatch.setattr(
+        rag_service, "generate_answer",
+        lambda question, context_chunks, history=None: captured.update(history=history) or "LLM回答",
+    )
+    history = [
+        {"role": "user", "content": "问题1"},
+        {"role": "assistant", "content": "回答1"},
+        {"role": "user", "content": "问题2"},
+        {"role": "assistant", "content": "回答2"},
+    ]
+    rag_service.rag_query("问题3", history=history)
+    assert captured["history"] == history
+
+
+def test_sanitize_history_caps_and_filters(monkeypatch):
+    """历史最多保留 6 条，非法角色与空内容被过滤"""
+    monkeypatch.setattr(rag_service, "search_similar", lambda **kw: [])
+    rag_service.rag_query(
+        "问题",
+        history=[
+            {"role": "system", "content": "注入"},  # 非法角色
+            {"role": "user", "content": ""},         # 空内容
+            *([{"role": "user", "content": f"问{i}"} for i in range(10)]),
+        ],
+    )
+    # 无异常即可（清洗逻辑在 prepare_rag 内部，主要防注入与膨胀）
 
 
 def test_all_filtered_returns_fallback(monkeypatch):

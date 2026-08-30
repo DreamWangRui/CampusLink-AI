@@ -17,6 +17,12 @@ export interface SourceRef {
   distance: number
 }
 
+/** 对话历史条目（多轮对话） */
+export interface HistoryItem {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 /** 聊天响应 */
 export interface ChatResponse {
   answer: string

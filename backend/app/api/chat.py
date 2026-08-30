@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from app.models.schemas import ChatRequest, ChatResponse, SourceRef
 from app.services.llm_service import generate_answer_stream
-from app.services.rag_service import rag_query, retrieve
+from app.services.rag_service import prepare_rag, rag_query
 
 # 创建聊天路由
 router = APIRouter(prefix="/api", tags=["聊天"])
@@ -51,7 +51,8 @@ def chat(request: ChatRequest) -> ChatResponse:
         避免阻塞事件循环导致其他请求排队。
     """
     try:
-        answer, relevant_docs = rag_query(request.question)
+        history = [item.model_dump() for item in request.history]
+        answer, relevant_docs = rag_query(request.question, history)
         return ChatResponse(answer=answer, sources=_to_sources(relevant_docs))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"问答处理失败: {e!s}")
@@ -72,10 +73,11 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
     fallback 文案通过单个 delta 事件直接下发。
     """
     question = request.question
+    history = [item.model_dump() for item in request.history]
 
     def event_stream():
         try:
-            context_chunks, relevant_docs, fallback = retrieve(question)
+            context_chunks, relevant_docs, fallback, clean_history = prepare_rag(question, history)
             sources = _to_sources(relevant_docs)
             yield f"data: {json.dumps({'type': 'meta', 'sources': [s.model_dump() for s in sources], 'fallback': fallback is not None}, ensure_ascii=False)}\n\n"
 
@@ -83,7 +85,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                 yield f"data: {json.dumps({'type': 'delta', 'content': fallback}, ensure_ascii=False)}\n\n"
             else:
                 try:
-                    for delta in generate_answer_stream(question, context_chunks):
+                    for delta in generate_answer_stream(question, context_chunks, clean_history):
                         yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
                 except Exception as e:
                     yield f"data: {json.dumps({'type': 'error', 'content': f'生成回答时出错：{e!s}'}, ensure_ascii=False)}\n\n"

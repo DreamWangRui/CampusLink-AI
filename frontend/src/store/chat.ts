@@ -4,7 +4,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { ChatMessage, SourceRef } from '../types'
+import type { ChatMessage, HistoryItem, SourceRef } from '../types'
 
 /** SSE 数据事件结构 */
 interface StreamEvent {
@@ -26,10 +26,17 @@ export const useChatStore = defineStore('chat', () => {
 
   /**
    * 发送用户消息，通过 SSE 流式接口获取 AI 回答（逐字渲染）
+   * 自动携带最近对话历史，支持"那评定比例呢？"这类追问
    *
    * @param question - 用户输入的问题
    */
   async function send(question: string) {
+    // 组装对话历史（当前问题之前的消息，过滤空/错误占位消息，最多 6 条）
+    const history: HistoryItem[] = messages.value
+      .filter(m => m.content && !m.content.includes('⚠️'))
+      .slice(-6)
+      .map(m => ({ role: m.role, content: m.content }))
+
     // 添加用户消息到列表
     messages.value.push({
       role: 'user',
@@ -52,7 +59,7 @@ export const useChatStore = defineStore('chat', () => {
       const response = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, history }),
       })
       if (!response.ok || !response.body) {
         throw new Error(`请求失败（HTTP ${response.status}）`)

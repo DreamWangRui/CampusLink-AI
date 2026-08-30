@@ -179,12 +179,23 @@ docker run --rm -v campuslink_chroma_data:/data -v "$(pwd)/backups":/backup alpi
 
 ### 示例
 
-**问答:**
+**问答（支持多轮追问）:**
 
 ```bash
 curl -X POST http://localhost:8000/api/chat \
   -H "Content-Type: application/json" \
   -d '{"question": "校园卡丢了怎么办？"}'
+
+# 多轮对话：携带最近历史，支持"那评定比例呢？"这类追问
+curl -X POST http://localhost:8000/api/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "那评定比例呢？",
+    "history": [
+      {"role": "user", "content": "奖学金金额是多少？"},
+      {"role": "assistant", "content": "启新奖学金一等奖2500元..."}
+    ]
+  }'
 ```
 
 **文档上传（支持批量与分类）:**

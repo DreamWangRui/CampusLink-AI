@@ -34,13 +34,57 @@ _client = OpenAI(
 )
 
 
-def generate_answer(question: str, context_chunks: list[str]) -> str:
+def rewrite_question(question: str, history: list[dict]) -> str:
+    """
+    追问改写：根据对话历史把"那评定比例呢？"这类追问改写成独立完整的问题，
+    用于语义检索（独立的追问无法命中知识库）
+
+    Args:
+        question: 用户最新问题（可能是追问）
+        history: 最近对话历史 [{"role", "content"}]
+
+    Returns:
+        str: 改写后的独立问题；改写失败时返回原始问题（由调用方兜底）
+    """
+    history_text = "\n".join(
+        f"{'用户' if item['role'] == 'user' else '助手'}：{item['content'][:200]}"
+        for item in history[-6:]
+    )
+    try:
+        response = _client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "你是查询改写器。根据对话历史，把用户的最新问题改写成一个"
+                        "不依赖上下文、独立完整的问题。只输出改写后的问题本身，"
+                        "不要任何解释。如果最新问题本身已独立完整，原样输出。"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"对话历史：\n{history_text}\n\n最新问题：{question}",
+                },
+            ],
+            temperature=0,
+            max_tokens=100,
+        )
+        rewritten = (response.choices[0].message.content or "").strip()
+        return rewritten if rewritten else question
+    except Exception as e:
+        logger.warning("追问改写失败，使用原始问题检索: %s", e)
+        return question
+
+
+def generate_answer(question: str, context_chunks: list[str], history: list[dict] | None = None) -> str:
     """
     基于检索到的知识库上下文，调用 DeepSeek 生成回答
 
     Args:
         question: 用户原始问题
         context_chunks: 从知识库检索到的相关文本片段（Top 5）
+        history: 最近对话历史（多轮对话上下文，可选）
 
     Returns:
         str: AI 生成的回答
@@ -52,10 +96,7 @@ def generate_answer(question: str, context_chunks: list[str]) -> str:
     t0 = time.time()
     response = _client.chat.completions.create(
         model=MODEL_NAME,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
-        ],
+        messages=_build_messages(user_message, history),
         temperature=0.3,  # 较低温度以保证回答的准确性和一致性
         max_tokens=2048,   # 增大回答长度限制，让回答更完整
     )
@@ -73,23 +114,21 @@ def generate_answer(question: str, context_chunks: list[str]) -> str:
     return answer if answer else "抱歉，生成回答时出现错误，请稍后重试。"
 
 
-def generate_answer_stream(question: str, context_chunks: list[str]):
+def generate_answer_stream(question: str, context_chunks: list[str], history: list[dict] | None = None):
     """
     流式生成回答：逐段 yield 模型输出的文本片段（用于 SSE 流式接口）
 
     Args:
         question: 用户原始问题
         context_chunks: 从知识库检索到的相关文本片段
+        history: 最近对话历史（多轮对话上下文，可选）
 
     Yields:
         str: 模型增量输出的文本片段
     """
     stream = _client.chat.completions.create(
         model=MODEL_NAME,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": _build_user_message(question, context_chunks)},
-        ],
+        messages=_build_messages(_build_user_message(question, context_chunks), history),
         temperature=0.3,
         max_tokens=2048,
         stream=True,
@@ -103,6 +142,19 @@ def generate_answer_stream(question: str, context_chunks: list[str]):
                 total_chars += len(delta)
                 yield delta
     logger.info("LLM 流式生成完成: %.1fs | 回答 %d 字", time.time() - t0, total_chars)
+
+
+def _build_messages(user_message: str, history: list[dict] | None) -> list[dict]:
+    """
+    构建消息序列：系统提示词 + 最近对话历史 + 当前用户消息
+    历史最多取 6 条，避免 Prompt 无限膨胀
+    """
+    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for item in (history or [])[-6:]:
+        role = "assistant" if item["role"] == "assistant" else "user"
+        messages.append({"role": role, "content": item["content"]})
+    messages.append({"role": "user", "content": user_message})
+    return messages
 
 
 def _build_user_message(question: str, context_chunks: list[str]) -> str:
