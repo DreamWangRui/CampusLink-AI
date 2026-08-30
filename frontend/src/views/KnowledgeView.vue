@@ -234,6 +234,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useKnowledgeStore } from '../store/knowledge'
+import { formatFileSize } from '../utils/format'
 import type { UploadFile } from 'element-plus'
 import type { KnowledgeDocument } from '../types'
 
@@ -266,15 +267,6 @@ function handleFileChange(file: UploadFile) {
  */
 function removeFile(index: number) {
   selectedFiles.value.splice(index, 1)
-}
-
-/**
- * 格式化文件大小为可读字符串
- */
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 /**

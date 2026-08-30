@@ -9,8 +9,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.models.schemas import ChatRequest, ChatResponse, SourceRef
-from app.services.rag_service import rag_query, retrieve
 from app.services.llm_service import generate_answer_stream
+from app.services.rag_service import rag_query, retrieve
 
 # 创建聊天路由
 router = APIRouter(prefix="/api", tags=["聊天"])
@@ -54,7 +54,7 @@ def chat(request: ChatRequest) -> ChatResponse:
         answer, relevant_docs = rag_query(request.question)
         return ChatResponse(answer=answer, sources=_to_sources(relevant_docs))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"问答处理失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"问答处理失败: {e!s}")
 
 
 @router.post("/chat/stream", summary="发送问题进行问答（SSE 流式）")
@@ -86,11 +86,11 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                     for delta in generate_answer_stream(question, context_chunks):
                         yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
                 except Exception as e:
-                    yield f"data: {json.dumps({'type': 'error', 'content': f'生成回答时出错：{str(e)}'}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'error', 'content': f'生成回答时出错：{e!s}'}, ensure_ascii=False)}\n\n"
 
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'content': f'问答处理失败：{str(e)}'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'content': f'问答处理失败：{e!s}'}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(

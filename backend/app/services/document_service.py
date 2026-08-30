@@ -4,6 +4,7 @@
 """
 
 from pathlib import Path
+
 from app.config import SUPPORTED_EXTENSIONS
 
 
@@ -121,4 +122,4 @@ def _parse_txt(file_path: Path) -> str:
         except (UnicodeDecodeError, UnicodeError):
             continue
 
-    raise ValueError(f"无法读取文件，请检查文件编码（支持 UTF-8 / GBK）")
+    raise ValueError("无法读取文件，请检查文件编码（支持 UTF-8 / GBK）")

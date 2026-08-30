@@ -8,20 +8,20 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 
 from app.config import UPLOAD_DIR
-from app.models.schemas import (
-    KnowledgeDocument,
-    KnowledgeListResponse,
-    DeleteDocumentRequest,
-    DeleteDocumentResponse,
-    MoveDocumentRequest,
-    MoveDocumentResponse,
-    FolderInfo,
-)
 from app.database.chroma_client import (
+    delete_document,
     get_all_documents,
     get_all_folders,
-    delete_document,
     move_document,
+)
+from app.models.schemas import (
+    DeleteDocumentRequest,
+    DeleteDocumentResponse,
+    FolderInfo,
+    KnowledgeDocument,
+    KnowledgeListResponse,
+    MoveDocumentRequest,
+    MoveDocumentResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ def list_documents(folder: str = Query(None, description="可选，按文件夹�
         documents.sort(key=lambda x: x.upload_time, reverse=True)
         return KnowledgeListResponse(documents=documents, total=len(documents))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取文档列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取文档列表失败: {e!s}")
 
 
 @router.get("/folders", summary="获取所有文件夹/分类列表")
@@ -83,7 +83,7 @@ def list_folders():
             ]
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取文件夹列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取文件夹列表失败: {e!s}")
 
 
 @router.delete("/delete", response_model=DeleteDocumentResponse, summary="删除知识库文档")
@@ -122,7 +122,7 @@ def delete_knowledge_document(request: DeleteDocumentRequest) -> DeleteDocumentR
             message += f"，并清理了 {removed} 个源文件"
         return DeleteDocumentResponse(success=True, message=message)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"删除文档失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"删除文档失败: {e!s}")
 
 
 @router.put("/move", response_model=MoveDocumentResponse, summary="移动文档到其他文件夹")
@@ -152,4 +152,4 @@ def move_knowledge_document(request: MoveDocumentRequest) -> MoveDocumentRespons
             message=f"已成功移动 {moved} 个 Chunk 到「{display}」",
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"移动文档失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"移动文档失败: {e!s}")

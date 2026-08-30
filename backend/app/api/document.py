@@ -14,13 +14,13 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 
-from app.config import UPLOAD_DIR, SUPPORTED_EXTENSIONS, MAX_FILE_SIZE
-from app.models.schemas import BatchUploadResponse, BatchUploadFileResult
+from app.config import MAX_FILE_SIZE, SUPPORTED_EXTENSIONS, UPLOAD_DIR
+from app.database.chroma_client import add_documents, find_by_file_hash
+from app.models.schemas import BatchUploadFileResult, BatchUploadResponse
 from app.services.document_service import parse_file
 from app.services.splitter_service import split_text
-from app.database.chroma_client import add_documents, find_by_file_hash
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def _process_batch(task_id: str, files: list[UploadFile], folder: str) -> None:
             result = BatchUploadFileResult(
                 success=False,
                 filename=file.filename or "未知文件",
-                message=f"处理异常: {str(e)}",
+                message=f"处理异常: {e!s}",
             )
         logger.info("文件入库[%d/%d] %s: %s", i + 1, len(files), result.filename, result.message)
         results.append(result)
@@ -130,7 +130,7 @@ def _process_single_file(file: UploadFile, folder: str) -> BatchUploadFileResult
             )
     except Exception as e:
         return BatchUploadFileResult(
-            success=False, filename=safe_filename, message=f"文件保存失败: {str(e)}"
+            success=False, filename=safe_filename, message=f"文件保存失败: {e!s}"
         )
 
     # ---- 重复文件检测（内容 SHA-256 哈希）----
@@ -152,7 +152,7 @@ def _process_single_file(file: UploadFile, folder: str) -> BatchUploadFileResult
             f.write(content)
     except Exception as e:
         return BatchUploadFileResult(
-            success=False, filename=safe_filename, message=f"文件保存失败: {str(e)}"
+            success=False, filename=safe_filename, message=f"文件保存失败: {e!s}"
         )
 
     # ---- 解析文本 ----
@@ -166,7 +166,7 @@ def _process_single_file(file: UploadFile, folder: str) -> BatchUploadFileResult
         if file_path.exists():
             file_path.unlink()
         return BatchUploadFileResult(
-            success=False, filename=safe_filename, message=f"文档解析失败: {str(e)}"
+            success=False, filename=safe_filename, message=f"文档解析失败: {e!s}"
         )
 
     # ---- 文本切分 ----
@@ -197,7 +197,7 @@ def _process_single_file(file: UploadFile, folder: str) -> BatchUploadFileResult
         if file_path.exists():
             file_path.unlink()
         return BatchUploadFileResult(
-            success=False, filename=safe_filename, message=f"向量化存储失败: {str(e)}"
+            success=False, filename=safe_filename, message=f"向量化存储失败: {e!s}"
         )
 
     return BatchUploadFileResult(
@@ -243,7 +243,7 @@ def upload_documents(
             result = BatchUploadFileResult(
                 success=False,
                 filename=file.filename or "未知文件",
-                message=f"处理异常: {str(e)}",
+                message=f"处理异常: {e!s}",
             )
         results.append(result)
         if result.success:

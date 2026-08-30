@@ -8,6 +8,7 @@ import logging
 import time
 
 from openai import OpenAI
+
 from app.config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, MODEL_NAME
 
 logger = logging.getLogger(__name__)
@@ -44,9 +45,6 @@ def generate_answer(question: str, context_chunks: list[str]) -> str:
     Returns:
         str: AI 生成的回答
     """
-    # 拼接上下文：将多个检索到的文本片段用换行分隔
-    context = "\n\n---\n\n".join(context_chunks)
-
     # 构建用户 Prompt，包含知识库内容和用户问题
     user_message = _build_user_message(question, context_chunks)
 

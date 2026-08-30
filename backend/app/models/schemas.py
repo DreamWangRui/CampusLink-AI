@@ -3,9 +3,8 @@ Pydantic 数据模型定义
 定义 API 请求和响应的数据结构
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional
 
+from pydantic import BaseModel, Field
 
 # ==================== 聊天相关模型 ====================
 

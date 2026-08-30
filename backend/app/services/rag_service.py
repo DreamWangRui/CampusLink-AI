@@ -9,10 +9,9 @@ RAG 服务（检索增强生成核心编排层）
 import logging
 import time
 
-from app.services.embedding_service import embed_texts
-from app.database.chroma_client import search_similar, get_all_documents
+from app.config import SIMILARITY_DISTANCE_THRESHOLD, TOP_K
+from app.database.chroma_client import get_all_documents, search_similar
 from app.services.llm_service import generate_answer
-from app.config import TOP_K, SIMILARITY_DISTANCE_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +23,11 @@ logger = logging.getLogger(__name__)
 # 能力询问类允许子串匹配。
 _META_EXACT = {"你好", "您好", "在吗", "嗨", "hi", "hello", "帮助", "help"}
 _META_CONTAINS = (
-    "你是谁", "你叫什么", "你能做什么", "你可以做什么", "你会做什么",
-    "你能干什么", "自我介绍", "介绍一下自己", "介绍下自己",
-    "你可以回答", "你能回答", "能回答什么", "回答哪些", "哪些问题", "什么问题",
-    "有什么功能", "你的功能",
+    "你是谁", "您是谁", "你叫什么", "您叫什么",
+    "你能做什么", "您能做什么", "你可以做什么", "您可以做什么",
+    "你会做什么", "您会做什么", "你能干什么", "您能干什么", "自我介绍", "介绍一下自己", "介绍下自己",
+    "你可以回答", "你能回答", "您可以回答", "能回答什么", "回答哪些",
+    "哪些问题", "什么问题", "有什么功能", "你的功能",
 )
 
 

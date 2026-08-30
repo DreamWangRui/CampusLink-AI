@@ -5,7 +5,8 @@
 """
 
 import re
-from app.config import CHUNK_SIZE, CHUNK_OVERLAP
+
+from app.config import CHUNK_OVERLAP, CHUNK_SIZE
 
 
 def split_text(text: str, chunk_size: int = CHUNK_SIZE, chunk_overlap: int = CHUNK_OVERLAP) -> list[str]:

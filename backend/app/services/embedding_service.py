@@ -8,7 +8,7 @@ import logging
 import os
 from pathlib import Path
 
-from app.config import EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSION
+from app.config import EMBEDDING_DIMENSION, EMBEDDING_MODEL_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ if (_hf_cache_dir / f"models--{EMBEDDING_MODEL_NAME.replace('/', '--')}").exists
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
     os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
-from sentence_transformers import SentenceTransformer  # noqa: E402
+from sentence_transformers import SentenceTransformer
 
 # ==================== 全局 Embedding 模型实例 ====================
 # 模型在首次使用时加载，之后常驻内存

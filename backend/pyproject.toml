@@ -1,7 +1,7 @@
 [project]
 name = "campuslink-backend"
 version = "0.1.0"
-description = "Add your description here"
+description = "CampusLink AI - 基于 RAG 的校园智能问答系统后端"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -18,3 +18,23 @@ dependencies = [
     "sentence-transformers>=5.6.0",
     "uvicorn>=0.49.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# BLE001: API 边界统一兜底转换为 HTTPException 属有意设计
+# B008: FastAPI 依赖注入 File()/Form() 作为参数默认值是官方标准写法
+# DTZ005: 上传时间戳为本地展示用途，无时区需求
+ignore = ["BLE001", "B008", "DTZ005"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

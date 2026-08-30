@@ -3,21 +3,26 @@ ChromaDB 数据库服务
 管理向量数据库的连接和基本操作，使用 PersistentClient 实现本地持久化
 """
 
+# 注：chromadb 的 PersistentClient 是工厂函数而非类，函数名 | None 的注解
+# 会被立即求值导致 TypeError，必须让注解惰性化
+from __future__ import annotations
+
 import os
-import uuid
-from pathlib import Path
-from typing import Optional
 
 import chromadb
 from chromadb import PersistentClient
 from chromadb.utils import embedding_functions
 
-from app.config import CHROMA_DB_DIR, COLLECTION_NAME, EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSION
-
+from app.config import (
+    CHROMA_DB_DIR,
+    COLLECTION_NAME,
+    EMBEDDING_DIMENSION,
+    EMBEDDING_MODEL_NAME,
+)
 
 # ==================== 全局 ChromaDB 客户端 ====================
 # 使用 PersistentClient 将向量数据持久化到本地磁盘
-_client: Optional[PersistentClient] = None
+_client: PersistentClient | None = None
 
 
 def get_client() -> PersistentClient:
