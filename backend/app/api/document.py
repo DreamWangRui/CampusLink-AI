@@ -6,6 +6,7 @@
 - GET  /api/document/status/{id}   查询上传任务进度
 """
 
+import hashlib
 import threading
 import time
 import uuid
@@ -18,7 +19,7 @@ from app.config import UPLOAD_DIR, SUPPORTED_EXTENSIONS, MAX_FILE_SIZE
 from app.models.schemas import BatchUploadResponse, BatchUploadFileResult
 from app.services.document_service import parse_file
 from app.services.splitter_service import split_text
-from app.database.chroma_client import add_documents
+from app.database.chroma_client import add_documents, find_by_file_hash
 
 # 创建文档路由
 router = APIRouter(prefix="/api/document", tags=["文档管理"])
@@ -122,6 +123,26 @@ def _process_single_file(file: UploadFile, folder: str) -> BatchUploadFileResult
                 filename=safe_filename,
                 message=f"文件超过大小限制（最大 {MAX_FILE_SIZE // (1024 * 1024)}MB）",
             )
+    except Exception as e:
+        return BatchUploadFileResult(
+            success=False, filename=safe_filename, message=f"文件保存失败: {str(e)}"
+        )
+
+    # ---- 重复文件检测（内容 SHA-256 哈希）----
+    file_hash = hashlib.sha256(content).hexdigest()
+    existing = find_by_file_hash(file_hash)
+    if existing:
+        existing_name = existing.get("filename", "未知文件")
+        return BatchUploadFileResult(
+            success=False,
+            filename=safe_filename,
+            message=f"与已有文档《{existing_name}》内容重复，已跳过",
+        )
+
+    # ---- 保存文件到磁盘 ----
+    unique_filename = f"{uuid.uuid4().hex}_{safe_filename}"
+    file_path = UPLOAD_DIR / unique_filename
+    try:
         with open(file_path, "wb") as f:
             f.write(content)
     except Exception as e:
@@ -162,6 +183,7 @@ def _process_single_file(file: UploadFile, folder: str) -> BatchUploadFileResult
         "folder": folder or "",
         "upload_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "file_type": extension,
+        "file_hash": file_hash,
     }
 
     try:

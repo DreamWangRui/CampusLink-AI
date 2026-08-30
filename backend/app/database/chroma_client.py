@@ -175,6 +175,23 @@ def delete_document(doc_id: str) -> list[str]:
     return list(original_files)
 
 
+def find_by_file_hash(file_hash: str) -> dict | None:
+    """
+    按文件 SHA-256 哈希查找已入库的文档（用于重复上传检测）
+
+    Args:
+        file_hash: 文件内容的 SHA-256 十六进制哈希
+
+    Returns:
+        dict | None: 已存在文档的元数据（含 filename/doc_id），不存在返回 None
+    """
+    collection = get_collection()
+    found = collection.get(where={"file_hash": file_hash}, include=["metadatas"])
+    if not found["ids"] or not found["metadatas"]:
+        return None
+    return found["metadatas"][0]
+
+
 def move_document(doc_id: str, folder: str) -> int:
     """
     将文档移动到指定文件夹（更新其所有 Chunk 的 folder 元数据）

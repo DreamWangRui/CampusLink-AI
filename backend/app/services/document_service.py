@@ -69,6 +69,8 @@ def _parse_pdf(file_path: Path) -> str:
 def _parse_docx(file_path: Path) -> str:
     """
     解析 DOCX 文件，提取文本内容
+    同时遍历正文段落与表格（校园文档的费用标准、开放时间常以表格呈现，
+    仅读 paragraphs 会全部丢失）
 
     Args:
         file_path: DOCX 文件路径
@@ -85,6 +87,13 @@ def _parse_docx(file_path: Path) -> str:
     for paragraph in doc.paragraphs:
         if paragraph.text and paragraph.text.strip():
             text_parts.append(paragraph.text.strip())
+
+    # 遍历所有表格，逐行拼接单元格（以 | 分隔）
+    for table in doc.tables:
+        for row in table.rows:
+            row_text = " | ".join(cell.text.strip() for cell in row.cells)
+            if row_text.strip(" |"):
+                text_parts.append(row_text)
 
     if not text_parts:
         raise ValueError("DOCX 文件中未找到文本内容")
