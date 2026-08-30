@@ -178,7 +178,7 @@ def test_chat_returns_answer_with_sources(monkeypatch):
     r = client.post("/api/chat", json={"question": "问题"})
     body = r.json()
     assert body["answer"] == "这是回答"
-    assert body["sources"] == [{"filename": "来源.pdf", "chunk_index": 2, "distance": 0.42}]
+    assert body["sources"] == [{"filename": "来源.pdf", "chunks": 1, "best_distance": 0.42}]
     assert captured["history"] == []
 
 
@@ -209,6 +209,20 @@ def test_chat_rejects_invalid_history_role():
         },
     )
     assert r.status_code == 422
+
+
+def test_sources_aggregated_by_filename(monkeypatch):
+    """同一文档的多个片段聚合为一条来源（片段数 + 最相关距离）"""
+    docs = [
+        {"id": "d1", "document": "片段1", "metadata": {"filename": "a.pdf"}, "distance": 0.5},
+        {"id": "d2", "document": "片段2", "metadata": {"filename": "a.pdf"}, "distance": 0.4},
+        {"id": "d3", "document": "片段3", "metadata": {"filename": "b.pdf"}, "distance": 0.6},
+    ]
+    monkeypatch.setattr("app.api.chat.rag_query", lambda question, history=None: ("回答", docs))
+    r = client.post("/api/chat", json={"question": "问题"})
+    sources = r.json()["sources"]
+    assert [(s["filename"], s["chunks"]) for s in sources] == [("a.pdf", 2), ("b.pdf", 1)]
+    assert [s["best_distance"] for s in sources] == [0.4, 0.6]  # 按最相关排序
 
 
 def test_chat_stream_event_sequence(monkeypatch):
