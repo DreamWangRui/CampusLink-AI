@@ -51,6 +51,18 @@
             v-html="renderMarkdown(msg.content)"
           ></div>
           <div v-else class="message-text">{{ msg.content }}</div>
+          <!-- 回答参考的知识库来源 -->
+          <div v-if="msg.sources?.length" class="message-sources">
+            <el-tag
+              v-for="(s, i) in msg.sources"
+              :key="i"
+              size="small"
+              type="info"
+              class="source-tag"
+            >
+              📎 {{ s.filename }}
+            </el-tag>
+          </div>
           <div class="message-time">{{ msg.time }}</div>
         </div>
       </div>
@@ -177,6 +189,18 @@ function scrollToBottom() {
 // ==================== 监听消息变化自动滚动 ====================
 watch(
   () => chatStore.messages.length,
+  async () => {
+    await nextTick()
+    scrollToBottom()
+  }
+)
+
+// 流式回答时内容持续增长，跟随滚动到底部
+watch(
+  () => {
+    const last = chatStore.messages[chatStore.messages.length - 1]
+    return last ? last.content.length : 0
+  },
   async () => {
     await nextTick()
     scrollToBottom()
@@ -317,6 +341,24 @@ onMounted(() => {
   font-size: 11px;
   color: #c0c4cc;
   margin-top: 4px;
+}
+
+/* ==================== 回答来源标签 ==================== */
+.message-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.message-wrapper.user .message-sources {
+  justify-content: flex-end;
+}
+
+.source-tag {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ==================== Markdown 渲染样式 ==================== */

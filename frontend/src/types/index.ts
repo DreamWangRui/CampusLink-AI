@@ -10,9 +10,17 @@ export interface ChatRequest {
   question: string
 }
 
+/** 回答引用的知识库片段来源 */
+export interface SourceRef {
+  filename: string
+  chunk_index?: number | null
+  distance: number
+}
+
 /** 聊天响应 */
 export interface ChatResponse {
   answer: string
+  sources: SourceRef[]
 }
 
 /** 聊天消息（用于页面展示） */
@@ -23,6 +31,8 @@ export interface ChatMessage {
   content: string
   /** 发送时间 */
   time: string
+  /** 回答参考的知识库来源（仅 AI 回答） */
+  sources?: SourceRef[]
 }
 
 // ==================== 知识库相关类型 ====================

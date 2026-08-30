@@ -57,22 +57,21 @@ def _meta_answer() -> str:
     )
 
 
-def rag_query(question: str) -> tuple[str, list[dict]]:
+def retrieve(question: str) -> tuple[list[str], list[dict], str | None]:
     """
-    执行完整的 RAG 问答流程
-
-    流程：
-        元问题识别 → 向量检索 → 相似度过滤 → Top K 相关片段 → DeepSeek 生成 → 返回答案
+    执行检索阶段：元问题短路 → 向量检索 → 相似度过滤
 
     Args:
         question: 用户原始问题
 
     Returns:
-        tuple[str, list[dict]]: (AI回答, 通过相似度过滤的文档片段列表)
+        tuple[list[str], list[dict], str | None]:
+            (相关片段文本列表, 通过过滤的片段列表, 兜底回答或 None)
+            兜底回答非 None 时表示无需调用 LLM，直接返回该文案
     """
     # 步骤 0：元问题（询问助手自身）直接自我介绍，不进入检索流程（零 token、零延迟）
     if _is_meta_question(question):
-        return _meta_answer(), []
+        return [], [], _meta_answer()
 
     # 步骤 1+2：语义检索
     # ChromaDB 的 query 方法内部会自动调用 EmbeddingFunction 将问题向量化
@@ -81,7 +80,7 @@ def rag_query(question: str) -> tuple[str, list[dict]]:
 
     # 知识库整体为空
     if not retrieved_docs:
-        return "知识库中暂无内容，请先上传校园相关文档。", []
+        return [], [], "知识库中暂无内容，请先上传校园相关文档。"
 
     # 步骤 3：相似度阈值过滤
     # 距离超过阈值说明内容与问题不相关，继续送入 Prompt 反而可能误导模型，
@@ -92,14 +91,32 @@ def rag_query(question: str) -> tuple[str, list[dict]]:
         if doc["distance"] <= SIMILARITY_DISTANCE_THRESHOLD
     ]
     if not relevant_docs:
-        return (
+        return [], [], (
             f"关于「{question}」，目前知识库中暂无相关信息，请咨询学校相关部门。\n\n"
             f"目前知识库收录了以下内容，你可以这样提问：\n{_build_scope_summary()}\n\n"
             "也可以换个问法再试试～"
-        ), []
+        )
 
-    # 步骤 4：提取检索到的文本内容并调用 LLM 生成回答
     context_chunks = [doc["document"] for doc in relevant_docs if doc["document"]]
-    answer = generate_answer(question=question, context_chunks=context_chunks)
+    return context_chunks, relevant_docs, None
 
+
+def rag_query(question: str) -> tuple[str, list[dict]]:
+    """
+    执行完整的 RAG 问答流程（非流式）
+
+    流程：
+        元问题识别 → 向量检索 → 相似度过滤 → Top K 相关片段 → DeepSeek 生成 → 返回答案
+
+    Args:
+        question: 用户原始问题
+
+    Returns:
+        tuple[str, list[dict]]: (AI回答, 通过相似度过滤的文档片段列表)
+    """
+    context_chunks, relevant_docs, fallback = retrieve(question)
+    if fallback is not None:
+        return fallback, relevant_docs
+
+    answer = generate_answer(question=question, context_chunks=context_chunks)
     return answer, relevant_docs

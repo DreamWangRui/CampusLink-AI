@@ -4,6 +4,34 @@
 
 ---
 
+## [2026-08-30] 变更九：流式输出 + 回答参考来源
+
+> 对应《优化建议.md》#6 #20 —— 此前提问需干等 10~30 秒转圈；回答也不展示来自哪些文档。
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `app/services/llm_service.py` | 新增 `generate_answer_stream()`（OpenAI `stream=True` 逐段 yield）；公共 Prompt 拼装抽取为 `_build_user_message()` 供流式/非流式共用 |
+| `app/services/rag_service.py` | 检索阶段抽取为 `retrieve()`（元问题短路 / 阈值过滤 / 兜底文案集中在此），`rag_query` 与流式端点共用，兜底逻辑单一出口 |
+| `app/api/chat.py` | 新增 `POST /api/chat/stream`（SSE）：事件序列 `meta`（携带参考来源与 fallback 标记）→ 多条 `delta` → `done`，出错以 `error` 事件下发；响应头 `X-Accel-Buffering: no` 关闭 Nginx 缓冲。非流式 `/api/chat` 保留，响应新增 `sources` 字段 |
+| `app/models/schemas.py` | 新增 `SourceRef`（filename / chunk_index / distance），`ChatResponse.sources` |
+| `frontend/src/types/index.ts` + `store/chat.ts` | 消息模型增加来源；`send()` 改用原生 fetch 读取 SSE 流（axios 不支持浏览器流式读取），逐事件追加内容，出错在消息内追加提示 |
+| `frontend/src/views/ChatView.vue` | 回答下方渲染来源标签（📎 文件名）；新增对末条消息内容长度的 watch，流式输出时跟随滚动 |
+
+### 核验检查（本地 + 容器双端）
+
+| 测试项 | 结果 |
+|--------|------|
+| 元问题流式（本地直连） | ✅ `meta→delta→done` 三事件 0.44s 返回，无 LLM 调用 |
+| 真实问题流式（本地直连） | ✅ 315 个 delta 事件 3.76s 渐进下发，回答 591 字含金额数据 |
+| 非流式 `/api/chat` 兼容 | ✅ 返回 answer + sources（7 个片段的文件名与距离） |
+| **经 Nginx 代理流式（容器）** | ✅ 299 事件，首事件 0.53s / 总耗时 3.46s——确认 `X-Accel-Buffering: no` 生效、无代理缓冲 |
+| `pnpm build`（含 vue-tsc） | ✅ 通过 |
+| 知识库数据跨重建存活 | ✅ 重建后 health 显示 12 chunks（变更八修复持续有效） |
+
+---
+
 ## [2026-08-30] 变更八：修复容器内数据路径错误 —— 知识库每次重建容器即丢失（P0）
 
 > **重要更正**：变更六中记录的"引擎崩溃导致卷数据回滚"归因有误。真实原因是在本次排查中确认的项目初始路径 bug（见下），引擎崩溃只是时间上的巧合。两次"知识库丢失"（变更五后、变更七后）均为同一 bug 所致。

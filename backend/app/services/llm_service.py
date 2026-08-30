@@ -43,18 +43,7 @@ def generate_answer(question: str, context_chunks: list[str]) -> str:
     context = "\n\n---\n\n".join(context_chunks)
 
     # 构建用户 Prompt，包含知识库内容和用户问题
-    user_message = f"""以下是从校园知识库中检索到的相关内容片段（共 {len(context_chunks)} 段）：
-
-{context}
-
-请根据以上知识库内容，回答用户的问题。注意：
-- 仔细阅读所有片段，不同片段可能包含互补信息
-- 如果某个片段的金额、时间等关键数据与问题相关，请务必引用
-- 综合多个片段的信息来给出完整答案
-
-用户问题：
-
-{question}"""
+    user_message = _build_user_message(question, context_chunks)
 
     # 调用 DeepSeek Chat API
     response = _client.chat.completions.create(
@@ -70,3 +59,48 @@ def generate_answer(question: str, context_chunks: list[str]) -> str:
     # 提取模型生成的回答文本
     answer = response.choices[0].message.content
     return answer if answer else "抱歉，生成回答时出现错误，请稍后重试。"
+
+
+def generate_answer_stream(question: str, context_chunks: list[str]):
+    """
+    流式生成回答：逐段 yield 模型输出的文本片段（用于 SSE 流式接口）
+
+    Args:
+        question: 用户原始问题
+        context_chunks: 从知识库检索到的相关文本片段
+
+    Yields:
+        str: 模型增量输出的文本片段
+    """
+    stream = _client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": _build_user_message(question, context_chunks)},
+        ],
+        temperature=0.3,
+        max_tokens=2048,
+        stream=True,
+    )
+    for chunk in stream:
+        if chunk.choices:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+
+
+def _build_user_message(question: str, context_chunks: list[str]) -> str:
+    """构建包含知识库上下文的用户 Prompt（普通生成与流式生成共用）"""
+    context = "\n\n---\n\n".join(context_chunks)
+    return f"""以下是从校园知识库中检索到的相关内容片段（共 {len(context_chunks)} 段）：
+
+{context}
+
+请根据以上知识库内容，回答用户的问题。注意：
+- 仔细阅读所有片段，不同片段可能包含互补信息
+- 如果某个片段的金额、时间等关键数据与问题相关，请务必引用
+- 综合多个片段的信息来给出完整答案
+
+用户问题：
+
+{question}"""

@@ -14,9 +14,17 @@ class ChatRequest(BaseModel):
     question: str = Field(..., description="用户提出的问题", min_length=1, max_length=2000)
 
 
+class SourceRef(BaseModel):
+    """回答引用的知识库片段来源"""
+    filename: str = Field(..., description="来源文档名称")
+    chunk_index: int | None = Field(None, description="片段序号")
+    distance: float = Field(..., description="与问题的余弦距离（越小越相关）")
+
+
 class ChatResponse(BaseModel):
     """聊天响应模型"""
     answer: str = Field(..., description="AI 生成的回答")
+    sources: list[SourceRef] = Field(default_factory=list, description="回答参考的知识库片段来源")
 
 
 # ==================== 知识库管理模型 ====================
