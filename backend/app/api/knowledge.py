@@ -7,7 +7,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.auth import require_admin
+from app.api.auth import require_admin, require_user
 from app.config import UPLOAD_DIR
 from app.database.chroma_client import (
     delete_document,
@@ -28,12 +28,16 @@ from app.models.schemas import (
 logger = logging.getLogger(__name__)
 
 # 创建知识库路由
-# 管理面鉴权：全部知识库接口要求管理员密钥（X-Admin-Key）
-router = APIRouter(prefix="/api/knowledge", tags=["知识库管理"], dependencies=[Depends(require_admin)])
+# 知识库权限模型：列表/分类对任意登录用户只读开放（普通用户可浏览），
+# 移动/删除等写操作仅管理员（路由内逐一定义依赖）
+router = APIRouter(prefix="/api/knowledge", tags=["知识库管理"])
 
 
 @router.get("/list", response_model=KnowledgeListResponse, summary="获取知识库文档列表（支持按文件夹筛选）")
-def list_documents(folder: str = Query(None, description="可选，按文件夹名称筛选")) -> KnowledgeListResponse:
+def list_documents(
+    folder: str = Query(None, description="可选，按文件夹名称筛选"),
+    _identity: tuple[str, str] = Depends(require_user),
+) -> KnowledgeListResponse:
     """
     获取知识库中所有文档的统计信息
     包含文档名称、所属文件夹、上传时间、Chunk 数量
@@ -69,7 +73,7 @@ def list_documents(folder: str = Query(None, description="可选，按文件夹�
 
 
 @router.get("/folders", summary="获取所有文件夹/分类列表")
-def list_folders():
+def list_folders(_identity: tuple[str, str] = Depends(require_user)):
     """
     获取所有文件夹及其下的文档数量
 
@@ -89,7 +93,10 @@ def list_folders():
 
 
 @router.delete("/delete", response_model=DeleteDocumentResponse, summary="删除知识库文档")
-def delete_knowledge_document(request: DeleteDocumentRequest) -> DeleteDocumentResponse:
+def delete_knowledge_document(
+    request: DeleteDocumentRequest,
+    _admin: None = Depends(require_admin),
+) -> DeleteDocumentResponse:
     """
     删除指定文档的所有 Chunk，并同步清理 uploads/ 下的原始文件
     （否则磁盘上的源文件会成为永久残留的孤儿文件）
@@ -128,7 +135,10 @@ def delete_knowledge_document(request: DeleteDocumentRequest) -> DeleteDocumentR
 
 
 @router.put("/move", response_model=MoveDocumentResponse, summary="移动文档到其他文件夹")
-def move_knowledge_document(request: MoveDocumentRequest) -> MoveDocumentResponse:
+def move_knowledge_document(
+    request: MoveDocumentRequest,
+    _admin: None = Depends(require_admin),
+) -> MoveDocumentResponse:
     """
     将文档移动到指定文件夹（更新其所有 Chunk 的 folder 元数据）
     输入不存在的文件夹名称即视为创建新分类；留空归入未分类

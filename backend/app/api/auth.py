@@ -144,7 +144,8 @@ def verify_token(token: str) -> tuple[str, str] | None:
 def require_user(request: Request) -> tuple[str, str]:
     """
     FastAPI 依赖：要求任意有效登录身份（管理员或普通用户），
-    返回 (角色, 身份)，用于按身份存取数据
+    返回 (角色, 身份)，用于按身份存取数据。
+    携带 X-Admin-Key（与 ADMIN_KEY 匹配）的脚本请求视为管理员身份。
 
     Raises:
         HTTPException: 401 未登录/令牌过期
@@ -159,6 +160,12 @@ def require_user(request: Request) -> tuple[str, str]:
             detail="登录已过期，请重新登录",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    admin_key = config.ADMIN_KEY
+    provided = request.headers.get(ADMIN_KEY_HEADER, "")
+    if admin_key and provided and secrets.compare_digest(provided, admin_key):
+        return "admin", config.ADMIN_USER
+
     raise HTTPException(
         status_code=401,
         detail="请先登录",

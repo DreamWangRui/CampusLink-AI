@@ -193,7 +193,7 @@ docker run --rm -v campuslink_chroma_data:/data -v "$(pwd)/backups":/backup alpi
 | `DELETE` | `/api/knowledge/delete` | 删除指定文档 🔒 |
 | `GET` | `/api/health` | 健康检查 |
 
-> 🔒 = 需要登录：先 `POST /api/auth/login`（`{"username", "password"}`）获取令牌，再以 `Authorization: Bearer <token>` 请求。普通用户登录后问答自动云端同步；管理员可管理知识库。聊天问答本身保持公开。
+> 🔒 = 需要登录：先 `POST /api/auth/login`（`{"username", "password"}`）获取令牌，再以 `Authorization: Bearer <token>` 请求。权限分级：任意登录用户可**只读**文档列表/分类；**上传/删除/移动仅管理员**（普通用户令牌 403）；脚本可用 `X-Admin-Key`；聊天问答保持公开。
 
 ### 示例
 

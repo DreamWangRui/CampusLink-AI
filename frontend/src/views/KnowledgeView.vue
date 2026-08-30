@@ -15,7 +15,7 @@
     </div>
 
     <!-- 上传区域 -->
-    <div class="upload-section">
+    <div v-if="authStore.isAdmin" class="upload-section">
       <el-upload
         ref="uploadRef"
         class="upload-area"
@@ -181,7 +181,7 @@
             <el-tag size="small" type="info">{{ row.chunk_count }} 个</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="170" align="center">
+        <el-table-column v-if="authStore.isAdmin" label="操作" width="170" align="center">
           <template #default="{ row }">
             <el-button type="primary" size="small" :icon="Position" link
               @click="openMoveDialog(row)">
@@ -247,7 +247,7 @@
       :close-on-click-modal="false"
     >
       <p class="auth-hint">
-        知识库管理操作需要管理员账号。登录一次后本浏览器会记住（默认账号 admin / admin123，可在 .env 中修改）。
+        登录后可查看知识库文档（普通用户只读）；管理员账号（默认 admin / admin123，可在 .env 修改）还可上传、删除与移动文档。
       </p>
       <el-input
         v-model="authUsername"
