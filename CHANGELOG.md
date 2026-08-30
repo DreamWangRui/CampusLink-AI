@@ -4,6 +4,28 @@
 
 ---
 
+## [2026-08-30] 变更十二：数据卷备份脚本
+
+> 对应变更八事故的保险措施——知识库/源文件数据卷一键备份到宿主机。
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `scripts/backup_volumes.sh` | Linux / macOS / Git Bash：tar 打包 `campuslink_chroma_data`、`campuslink_upload_data` 到 `backups/`（带时间戳），Git Bash 下禁用 MSYS 路径转换；打印恢复命令 |
+| `scripts/backup_volumes.bat` | Windows CMD 等价实现 |
+| `.gitignore` | 忽略 `backups/` |
+| `README.md` | Docker 部署章节补充备份/恢复说明 |
+
+`hf_cache`（Embedding 模型缓存，体积大且可自动重新下载）不纳入备份。
+
+### 核验检查
+
+1. ✅ 脚本执行成功，生成两个带时间戳的 tar.gz（chroma 267KB / uploads 998KB）；
+2. ✅ tar 内容校验：包含 `chroma.sqlite3` 与向量段文件，数据完整。
+
+---
+
 ## [2026-08-30] 变更十一：重复文件去重 + DOCX 表格解析
 
 > 对应《优化建议.md》#10 #12 —— 同一文件反复上传会生成多份重复文档污染检索；DOCX 表格内容（校园文档的费用/时间常在表格里）被完全丢弃。

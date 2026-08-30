@@ -152,6 +152,19 @@ docker compose down
 
 浏览器访问 `http://localhost` 即可使用完整应用（UI 与 API 同源，无需跨域）；后端 8000 端口保留用于直接调试 API，如不需要可删除 `docker-compose.yml` 中 backend 的 `ports` 配置。
 
+### 数据备份与恢复
+
+```bash
+# 备份知识库与源文件数据卷（输出到 backups/，已 gitignore）
+bash scripts/backup_volumes.sh        # Windows CMD: scripts\backup_volumes.bat
+
+# 恢复单个卷（谨慎操作，会清空卷后写入备份内容）
+docker run --rm -v campuslink_chroma_data:/data -v "$(pwd)/backups":/backup alpine \
+  sh -c 'rm -rf /data/* && tar xzf /backup/<备份文件名>.tar.gz -C /data'
+```
+
+建议在文档批量更新后手动执行备份；`hf_cache`（Embedding 模型缓存）体积大且可自动重新下载，不做备份。
+
 ## 📡 API 接口
 
 | 方法 | 路径 | 说明 |
