@@ -297,6 +297,7 @@ import {
 import { useAuthStore } from '../store/auth'
 import { useKnowledgeStore } from '../store/knowledge'
 import { formatFileSize } from '../utils/format'
+import { extractApiError } from '../utils/apiError'
 import type { UploadFile } from 'element-plus'
 import type { KnowledgeDocument } from '../types'
 
@@ -441,7 +442,7 @@ async function handleLogin() {
     authPassword.value = ''
     ElMessage.success(role === 'admin' ? '管理员登录成功' : '登录成功')
   } catch (error: any) {
-    ElMessage.error(typeof error === 'string' ? error : error.message || '登录失败')
+    ElMessage.error(extractApiError(error, '登录失败'))
   }
 }
 

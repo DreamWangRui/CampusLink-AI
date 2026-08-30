@@ -4,6 +4,38 @@
 
 ---
 
+## [2026-08-30] 变更二十一：注册体验修复 —— 422 错误可读化 + 用户名下限放宽
+
+> 用户反馈：注册"wr"（2 位用户名 + 5 位密码）只报"Request failed with status code 422"，完全看不出原因。
+
+### 问题
+
+1. FastAPI 422 校验错误的 `detail` 是**数组**，前端只按字符串提取 → 落到 axios 通用文案，原因丢失；
+2. pydantic 的 `Field(min_length=...)` 内置约束**先于** `field_validator` 执行，短输入短路成英文默认消息（"String should have at least 6 characters"）；
+3. 用户名下限 3 位偏严（"wr" 这类 2 位名字被拒）。
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `backend/app/api/auth.py` | `RegisterRequest`：用户名下限放宽为 2 位；长度约束全部移入 `field_validator`（内置约束会短路中文消息），422 返回中文文案（"用户名至少 2 个字符"/"密码至少 6 位"等） |
+| `frontend/src/utils/apiError.ts`（新增） | `extractApiError()`：字符串 detail 直取；数组 detail 按类型翻译（长度不足/超限/字符不合规等）并拼接字段名；无信息时回退兜底文案 |
+| `frontend/src/App.vue` | 注册模式提交前**前置校验**（用户名 ≥2 字符、密码 ≥6 位，把常见错误拦在请求前）；错误提示改用 `extractApiError`；账号 placeholder 更新 |
+| `frontend/src/views/KnowledgeView.vue` | 管理员登录错误提示同样改用 `extractApiError` |
+| `frontend/tests/api-error.spec.ts` | 提取器 5 个用例（字符串 detail/数组翻译/中文透传/回退/兜底） |
+
+### 核验检查
+
+| 测试项 | 结果 |
+|--------|------|
+| 后端："wr"（2 位）+ 6 位密码注册 | ✅ 200 |
+| 后端：5 位密码注册 422 detail 含"密码至少 6 位" | ✅ 中文文案直达 |
+| 前端预校验：短密码提交提示"密码至少 6 位"且不发请求 | ✅ 浏览器实测截图 |
+| 前端：wr + 合法密码注册成功自动登录（顶栏显示 wr） | ✅ 浏览器实测截图 |
+| pytest 52 passed / vitest 20 passed / ruff / 构建 | ✅ 全绿 |
+
+---
+
 ## [2026-08-30] 变更二十：普通用户系统 —— 可选注册/登录 + 云端聊天记录同步
 
 > 用户需求："没有普通用户的登录入口嘛？"（选定方案：可选登录）——未登录仍可匿名问答；登录后聊天记录云端同步，换设备不丢。V2"服务端会话管理"核心落地。

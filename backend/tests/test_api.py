@@ -350,6 +350,18 @@ def test_chat_history_roundtrip_and_clear(monkeypatch):
     assert r.json()["messages"] == []
 
 
+def test_register_two_char_username_ok_and_chinese_message():
+    """2 位用户名可注册；密码过短时 422 detail 带中文文案"""
+    _enable_real_auth()
+    r = client.post("/api/auth/register", json={"username": "wr", "password": "pass666"})
+    assert r.status_code == 200
+
+    r = client.post("/api/auth/register", json={"username": "abc123", "password": "12345"})
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert any("密码至少 6 位" in d["msg"] for d in detail)
+
+
 def test_login_wrong_password_rejected():
     _enable_real_auth()
     r = client.post("/api/auth/login", json={"username": "admin", "password": "wrong"})

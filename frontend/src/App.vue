@@ -74,7 +74,7 @@
       </div>
       <el-input
         v-model="authForm.username"
-        placeholder="账号（注册用户名 3-32 位）"
+        placeholder="账号（2-32 位，字母/数字/下划线/中文）"
         class="auth-field"
         @keyup.enter="submitAuth"
       />
@@ -105,6 +105,7 @@ import 'element-plus/es/components/message/style/css'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { ChatDotRound, FolderOpened } from '@element-plus/icons-vue'
 import { useAuthStore } from './store/auth'
+import { extractApiError } from './utils/apiError'
 
 // ==================== 路由状态 ====================
 const route = useRoute()
@@ -132,6 +133,17 @@ async function submitAuth() {
     ElMessage.warning('请输入账号和密码')
     return
   }
+  // 注册模式前置校验：把常见错误拦在请求发出前
+  if (authMode.value === 'register') {
+    if (username.length < 2) {
+      ElMessage.warning('用户名至少 2 个字符')
+      return
+    }
+    if (password.length < 6) {
+      ElMessage.warning('密码至少 6 位')
+      return
+    }
+  }
   submitting.value = true
   try {
     if (authMode.value === 'register') {
@@ -144,7 +156,7 @@ async function submitAuth() {
     authDialogVisible.value = false
     authForm.value = { username: '', password: '' }
   } catch (error: any) {
-    ElMessage.error(typeof error === 'string' ? error : error.message || '操作失败')
+    ElMessage.error(extractApiError(error, '操作失败'))
   } finally {
     submitting.value = false
   }

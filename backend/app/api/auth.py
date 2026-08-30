@@ -20,7 +20,7 @@ import secrets
 import time
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app import config
 from app.database import user_db
@@ -51,12 +51,31 @@ class RegisterRequest(BaseModel):
     """注册请求"""
     username: str = Field(
         ...,
-        description="用户名（3-32 位，字母/数字/下划线/中文）",
-        min_length=3,
-        max_length=32,
+        description="用户名（2-32 位，字母/数字/下划线/中文）",
         pattern=r"^[\w]+$",
     )
-    password: str = Field(..., description="密码（至少 6 位）", min_length=6, max_length=100)
+    password: str = Field(..., description="密码（至少 6 位）")
+
+    # 长度约束放在校验器里（而非 Field 的 min_length），保证 422 返回中文文案：
+    # pydantic 的内置约束先于 field_validator 执行，会短路成英文默认消息
+    @field_validator("username")
+    @classmethod
+    def username_rules(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError("用户名至少 2 个字符")
+        if len(v) > 32:
+            raise ValueError("用户名最多 32 个字符")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_rules(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("密码至少 6 位")
+        if len(v) > 100:
+            raise ValueError("密码最多 100 位")
+        return v
 
 
 class LoginResponse(BaseModel):
