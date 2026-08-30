@@ -77,7 +77,7 @@ CampusLinkAI/
 cd CampusLinkAI
 ```
 
-### 2. 配置 API Key
+### 2. 配置 API Key 与管理员账号
 
 编辑 `.env` 文件，填入你的 DeepSeek API Key：
 
@@ -85,10 +85,12 @@ cd CampusLinkAI
 DEEPSEEK_API_KEY=your_actual_api_key
 ```
 
-同时建议配置管理员密钥（知识库管理操作需要，聊天问答不受影响；不配置则管理接口允许匿名访问）：
+知识库管理需要管理员登录（默认 `admin` / `admin123`，生产环境务必修改，并建议配置 `SECRET_KEY` 使令牌在重启后仍有效）：
 
 ```env
-ADMIN_KEY=your_admin_key
+ADMIN_USER=admin
+ADMIN_PASSWORD=your_strong_password
+SECRET_KEY=change_me_to_a_random_string
 ```
 
 > 获取 API Key: [https://platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys)
@@ -185,7 +187,7 @@ docker run --rm -v campuslink_chroma_data:/data -v "$(pwd)/backups":/backup alpi
 | `DELETE` | `/api/knowledge/delete` | 删除指定文档 🔒 |
 | `GET` | `/api/health` | 健康检查 |
 
-> 🔒 = 需要管理员密钥：请求头 `X-Admin-Key` 与 `.env` 中的 `ADMIN_KEY` 匹配；聊天问答保持公开。
+> 🔒 = 需要管理员登录：先 `POST /api/auth/login`（`{"username", "password"}`）获取令牌，再以 `Authorization: Bearer <token>` 请求；脚本/curl 也可用请求头 `X-Admin-Key`（需配置 `ADMIN_KEY`）。聊天问答保持公开。
 
 ### 示例
 

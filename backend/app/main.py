@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
 from app.api.document import router as document_router
 from app.api.knowledge import router as knowledge_router
@@ -39,13 +40,15 @@ async def lifespan(app: FastAPI):
 
     # 管理面鉴权状态告警
     from app import config as app_config
-    if app_config.ADMIN_KEY:
-        logger.info("管理员密钥已启用：知识库管理接口需要 X-Admin-Key 请求头")
-    else:
+    if app_config.ADMIN_PASSWORD == "admin123":
         logger.warning(
-            "!! ADMIN_KEY 未配置：知识库管理接口（上传/删除/移动/列表）允许匿名访问（开发模式）。"
-            "生产环境请在 .env 中设置 ADMIN_KEY !!"
+            "!! 管理员密码为默认值（admin/admin123），生产环境请在 .env 中设置 "
+            "ADMIN_USER / ADMIN_PASSWORD !!"
         )
+    if app_config.ADMIN_KEY:
+        logger.info("X-Admin-Key 备选鉴权已启用")
+    if not app_config.SECRET_KEY:
+        logger.info("SECRET_KEY 未配置：令牌密钥为本次启动随机生成，重启后需重新登录")
 
     yield  # 应用运行期间
 
@@ -91,6 +94,7 @@ async def log_requests(request: Request, call_next):
 
 
 # ==================== 注册路由 ====================
+app.include_router(auth_router)        # 鉴权接口: POST /api/auth/login
 app.include_router(chat_router)        # 聊天接口: POST /api/chat, /api/chat/stream
 app.include_router(document_router)    # 文档上传接口
 app.include_router(knowledge_router)   # 知识库管理接口

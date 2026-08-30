@@ -50,10 +50,13 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "your_api_key_here")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 MODEL_NAME = os.getenv("MODEL_NAME", "deepseek-chat")
 
-# ==================== 管理员密钥（知识库管理面鉴权） ====================
-# 上传/删除/移动/列表等管理操作要求请求头 X-Admin-Key 与之匹配；
-# 聊天问答保持公开。未配置时管理接口放行（开发模式），启动日志会醒目告警，
-# 生产环境务必在 .env 中设置。
+# ==================== 管理员账号（知识库管理面登录） ====================
+# 管理接口需登录获取令牌；聊天问答保持公开。生产环境务必修改默认密码。
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+# 令牌签名密钥：未配置时每次启动随机生成（重启后需重新登录）
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+# 脚本/curl 备选：配置后可用 X-Admin-Key 头代替登录令牌
 ADMIN_KEY = os.getenv("ADMIN_KEY", "")
 
 # ==================== Embedding 模型配置 ====================

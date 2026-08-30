@@ -4,6 +4,45 @@
 
 ---
 
+## [2026-08-30] 变更十九：管理面升级为账号密码登录
+
+> 用户需求："得设置一个登录，管理员账号 admin / 密码 admin123"。在变更十八的管理员密钥基础上升级为正式登录。
+
+### 权限模型（升级后）
+
+| 接口 | 权限 |
+|------|------|
+| `/api/chat/*`、`/api/health` | 🔓 公开 |
+| 其余管理接口 | 🔐 `Authorization: Bearer <token>`（登录签发，7 天有效）；脚本备选 `X-Admin-Key`（需配置 `ADMIN_KEY`） |
+
+默认账号 `admin` / `admin123`（`ADMIN_USER` / `ADMIN_PASSWORD` 可覆盖，启动日志对默认密码告警）。
+
+### 改动内容
+
+| 文件 | 改动 |
+|------|------|
+| `app/config.py` | 新增 `ADMIN_USER` / `ADMIN_PASSWORD`（默认 admin/admin123）/ `SECRET_KEY`（未配置则每次启动随机生成，重启需重新登录） |
+| `app/api/auth.py` | 重写：`POST /api/auth/login`（登录签发 HMAC-SHA256 签名令牌，无状态防篡改）；登录防爆破（同 IP 连续失败 5 次锁定 5 分钟）；`require_admin` 支持 Bearer 令牌 + X-Admin-Key 双通道 |
+| `app/main.py` | 注册鉴权路由；默认密码/SECRET_KEY 未配置告警 |
+| `frontend/src/api/auth.ts`（新增）+ `api/index.ts` | 登录 API；管理面请求自动附带 `Authorization: Bearer` |
+| `frontend/src/store/knowledge.ts` | `login()` / `logout()` action（令牌存取、needsAuth 联动、401 时清除失效令牌） |
+| `frontend/src/views/KnowledgeView.vue` | 登录弹窗改账号+密码（预填 admin、回车提交、错误提示保持弹窗），已登录显示"退出登录" |
+
+### 核验检查（API + 单测 + 浏览器实测）
+
+| 测试项 | 结果 |
+|--------|------|
+| admin/admin123 登录 | ✅ 200，签发 7 天令牌 |
+| 错误密码 | ✅ 401 |
+| 无令牌访问管理面 / 带令牌访问 | ✅ 401 / 200 |
+| 篡改令牌 | ✅ 401（签名校验） |
+| 连续失败 5 次锁定（正确密码也 429） | ✅ |
+| X-Admin-Key 备选通道 | ✅ 200 |
+| 浏览器：弹窗自动弹出 → admin/admin123 登录 → 列表加载、弹窗关闭 | ✅ 截图确认 |
+| 回归：pytest 48 passed / vitest 15 passed / ruff 全绿 / 构建 | ✅ |
+
+---
+
 ## [2026-08-30] 变更十八：知识库管理面鉴权（管理员密钥）
 
 > 用户确认的需求：不能任何人都能操作知识库内容。方案：管理员密钥（`ADMIN_KEY` 环境变量），不做完整用户系统（V3 再议）。

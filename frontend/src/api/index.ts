@@ -18,12 +18,12 @@ const api = axios.create({
 // ==================== 请求拦截器 ====================
 api.interceptors.request.use(
   (config) => {
-    // 知识库管理接口自动附带管理员密钥（登录后保存在 localStorage）
+    // 知识库管理接口自动附带登录令牌（登录后保存在 localStorage）
     const url = config.url ?? ''
     if (url.startsWith('/knowledge') || url.startsWith('/document')) {
-      const adminKey = localStorage.getItem('campuslink_admin_key')
-      if (adminKey) {
-        config.headers['X-Admin-Key'] = adminKey
+      const token = localStorage.getItem('campuslink_admin_token')
+      if (token) {
+        config.headers['Authorization'] = `Bearer ${token}`
       }
     }
     return config

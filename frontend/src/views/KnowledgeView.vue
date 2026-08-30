@@ -239,28 +239,40 @@
       </template>
     </el-dialog>
 
-    <!-- 管理员验证弹窗 -->
+    <!-- 管理员登录弹窗 -->
     <el-dialog
       v-model="authDialogVisible"
-      title="管理员验证"
+      title="管理员登录"
       width="400px"
       :close-on-click-modal="false"
     >
       <p class="auth-hint">
-        知识库管理操作需要管理员密钥。验证一次后本浏览器会记住（可随时在此处更换）。
+        知识库管理操作需要管理员账号。登录一次后本浏览器会记住（默认账号 admin / admin123，可在 .env 中修改）。
       </p>
       <el-input
-        v-model="adminKeyInput"
+        v-model="authUsername"
+        placeholder="账号"
+        class="auth-input"
+        @keyup.enter="handleLogin"
+      />
+      <el-input
+        v-model="authPassword"
         type="password"
-        placeholder="输入管理员密钥（ADMIN_KEY）"
+        placeholder="密码"
         show-password
-        @keyup.enter="handleAuthSave"
+        class="auth-input"
+        @keyup.enter="handleLogin"
       />
       <template #footer>
-        <el-button @click="authDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="knowledgeStore.loading" @click="handleAuthSave">
-          验证并加载
-        </el-button>
+        <div class="auth-footer">
+          <el-button v-if="loggedIn" text type="danger" @click="handleLogout">退出登录</el-button>
+          <span class="auth-footer-actions">
+            <el-button @click="authDialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="knowledgeStore.loading" @click="handleLogin">
+              登录并加载
+            </el-button>
+          </span>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -400,32 +412,48 @@ function refreshAll() {
   knowledgeStore.loadFolders()
 }
 
-// ==================== 管理员验证 ====================
+// ==================== 管理员登录 ====================
 const authDialogVisible = ref(false)
-const adminKeyInput = ref('')
+const authUsername = ref('admin')
+const authPassword = ref('')
+/** 当前浏览器是否已持有登录令牌（用于显示"退出登录"） */
+const loggedIn = ref(!!localStorage.getItem('campuslink_admin_token'))
 
-// 鉴权失败（401）时自动弹出验证弹窗
+// 鉴权失败（401）时自动弹出登录弹窗
 watch(
   () => knowledgeStore.needsAuth,
   (needs) => {
-    if (needs) authDialogVisible.value = true
+    if (needs) {
+      loggedIn.value = false
+      authDialogVisible.value = true
+    }
   },
 )
 
-/** 保存管理员密钥并重试加载；密钥错误时弹窗保持打开 */
-async function handleAuthSave() {
-  const key = adminKeyInput.value.trim()
-  if (!key) {
-    ElMessage.warning('请输入管理员密钥')
+/** 登录：成功后关闭弹窗；账号/密码错误时提示并保持弹窗 */
+async function handleLogin() {
+  const username = authUsername.value.trim()
+  const password = authPassword.value
+  if (!username || !password) {
+    ElMessage.warning('请输入账号和密码')
     return
   }
   try {
-    await knowledgeStore.setAdminKey(key)
+    await knowledgeStore.login(username, password)
     authDialogVisible.value = false
-    ElMessage.success('管理员验证通过')
-  } catch {
-    ElMessage.error('密钥错误或加载失败，请重试')
+    loggedIn.value = true
+    authPassword.value = ''
+    ElMessage.success('登录成功')
+  } catch (error: any) {
+    ElMessage.error(typeof error === 'string' ? error : error.message || '登录失败')
   }
+}
+
+/** 退出登录：清除令牌，管理接口将返回 401 并重新弹出登录弹窗 */
+async function handleLogout() {
+  await knowledgeStore.logout()
+  loggedIn.value = false
+  ElMessage.success('已退出登录')
 }
 
 // ==================== 页面加载 ====================
@@ -695,12 +723,28 @@ onMounted(() => {
   gap: 8px;
 }
 
-/* ==================== 管理员验证弹窗 ==================== */
+/* ==================== 管理员登录弹窗 ==================== */
 .auth-hint {
   margin: 0 0 12px;
   font-size: 13px;
   color: #909399;
   line-height: 1.6;
+}
+
+.auth-input {
+  margin-bottom: 10px;
+}
+
+.auth-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.auth-footer-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .section-header h3 {
